@@ -1,0 +1,38 @@
+#!/usr/bin/bash
+
+ARCH="riscv64"
+TARGET="riscv64gc-unknown-none-elf"
+ROOT=$(dirname "$0")/..
+
+clean() {
+    (cd $ROOT/user/libnekos && cargo clean)
+    (cd $ROOT/kernel && cargo clean)
+}
+
+build() {
+    (cd $ROOT/user/libnekos && cargo build)
+    (cd $ROOT/kernel && cargo build)
+    cp $ROOT/kernel/target/$TARGET/debug/kernel $ROOT/target/build.elf
+    rust-objcopy \
+        --strip-all --remove-section=.uninit \
+        -B binary-architecture=$ARCH \
+        -O binary \
+        $ROOT/target/build.elf \
+        $ROOT/target/build.bin
+}
+
+run() {
+    qemu-system-$ARCH \
+        -global virtio-mmio.force-legacy=false \
+        -machine virt \
+        -bios default \
+        -nographic \
+        -smp cpus=8 \
+        -m 2048M \
+        -kernel $ROOT/target/build.bin
+}
+
+for i in $@
+do
+  $i
+done

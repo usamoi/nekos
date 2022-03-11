@@ -1,0 +1,16 @@
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+[net]
+git-fetch-with-cli = true
+
+[target.riscv64gc-unknown-none-elf]
+runner = "../tools/runner"
+rustflags = [
+    "-Ccode-model=medium",
+    "-Crelocation-model=static",
+    "-Cforce-frame-pointers=yes",
+    "-Clink-args=-T src/arch/riscv64/linker.ld",
+    "-Clink-args=-z nognustack",
+    "-Clink-args=--no-dynamic-linker",
+]

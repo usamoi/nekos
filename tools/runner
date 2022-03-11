@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+
+ARCH="riscv64"
+ROOT=$(dirname "$0")/..
+
+cp $1 $ROOT/target/runner.elf
+rust-objcopy \
+    --strip-all --remove-section=.uninit \
+    -B binary-architecture=$ARCH \
+    -O binary \
+    $ROOT/target/runner.elf \
+    $ROOT/target/runner.bin
+qemu-system-$ARCH \
+    -global virtio-mmio.force-legacy=false \
+    -machine virt \
+    -nographic \
+    -smp cpus=8 \
+    -m 2048M \
+    -kernel $ROOT/target/runner.bin
