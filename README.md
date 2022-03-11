@@ -1,3 +1,3 @@
 # Nekos
 
-A toy OS written in OS.
+A toy OS written in Rust.
