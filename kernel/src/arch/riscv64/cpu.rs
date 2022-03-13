@@ -1,9 +1,11 @@
 use crate::prelude::*;
+use arch::macros::thread_pointer;
 use arch::sbi::legacy::{remote_fence_i, remote_sfence_vma};
 use core::cell::Cell;
 use core::ops::Add;
 use core::time::Duration;
 use crossbeam::atomic::AtomicCell;
+use riscv::register::sie;
 use riscv::register::time;
 use spin::Once;
 
@@ -73,6 +75,9 @@ impl SystemTime {
         self.0
     }
     pub fn checked_duration_since(self, earlier: Self) -> Option<Duration> {
+        if thread_pointer!() == 0 {
+            return None;
+        }
         let freq = LOCAL.config().get_frequency()?.frequency;
         Some(Duration::from_micros(
             (self.0 - earlier.0) * 1_000_000 / freq,
@@ -185,3 +190,9 @@ impl Configs {
 }
 
 pub static CONFIGS: Configs = Configs::new();
+
+pub unsafe fn init_start(cpuid: usize) {
+    arch::cpu::LOCAL.set_id(cpuid);
+    sie::set_sext();
+    sie::set_stimer();
+}

@@ -3,8 +3,6 @@ use arch::cpu::ConfigStack;
 use core::alloc::Layout;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
-use crossbeam::atomic::AtomicCell;
-use riscv::register::sie;
 
 extern "C" {
     static _bss_start: LinkerSymbol;
@@ -82,40 +80,17 @@ unsafe extern "C" fn _start(cpuid: usize, opaque: *const u8) -> ! {
             });
         }
     }
-    _start3(cpuid);
+    _start2(cpuid);
 }
-
-#[link_section = ".data"]
-static LOCK: AtomicCell<bool> = AtomicCell::new(false);
 
 #[no_mangle]
 unsafe extern "C" fn _start2(cpuid: usize) -> ! {
     info!("starting");
     arch::tls::init_start();
-    arch::cpu::LOCAL.set_id(cpuid);
-    sie::set_sext();
-    sie::set_stimer();
-    while !LOCK.load() {
-        core::hint::spin_loop();
-    }
+    arch::cpu::init_start(cpuid);
     arch::trampoline::init_start();
     arch::trampoline::fault::init_start();
     arch::trampoline::switch::init_start();
-    mem::vmm::init_start();
-    _main();
-}
-
-unsafe fn _start3(cpuid: usize) -> ! {
-    info!("starting");
-    arch::tls::init_start();
-    arch::cpu::LOCAL.set_id(cpuid);
-    sie::set_sext();
-    sie::set_stimer();
-    LOCK.store(true);
-    arch::trampoline::init_start();
-    arch::trampoline::fault::init_start();
-    arch::trampoline::switch::init_start();
-    mem::vmm::init_start();
     _main();
 }
 

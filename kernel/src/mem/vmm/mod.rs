@@ -87,7 +87,3 @@ pub unsafe fn init_boot() {
 pub fn pt() -> PageTableToken {
     SPACE.page_table.token()
 }
-
-pub unsafe fn init_start() {
-    pt().switch();
-}
