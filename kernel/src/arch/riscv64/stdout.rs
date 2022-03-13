@@ -6,7 +6,7 @@ pub struct StdoutWrite {}
 
 impl fmt::Write for StdoutWrite {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.chars() {
+        for c in s.bytes() {
             arch::sbi::legacy::console_putchar(c as i32);
         }
         Ok(())

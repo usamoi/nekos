@@ -4,13 +4,13 @@ mod signal_set;
 pub use self::signal_set::*;
 
 use crate::prelude::*;
-use core::time::Duration;
-use arch::cpu::SystemTime;
-use arch::cpu::LOCAL;
+use arch::cpu::local;
+use arch::time::SystemTime;
 use arch::trampoline::switch::Switch;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Poll, Waker};
+use core::time::Duration;
 use crossbeam::atomic::AtomicCell;
 use proc::process::Process;
 use spin::{Mutex, Once};
@@ -80,7 +80,7 @@ impl Thread {
 impl Pollable for Thread {
     fn poll(&self, waker: Waker, duration: Duration) -> Poll<()> {
         let mut guard = self.future.get().unwrap().try_lock().unwrap();
-        LOCAL.local_set_timer(SystemTime::now() + duration);
+        local().local_set_timer(SystemTime::now() + duration);
         let future = guard.as_mut();
         let ans = future.poll(&mut core::task::Context::from_waker(&waker));
         drop(guard);

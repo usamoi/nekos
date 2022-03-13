@@ -1,7 +1,7 @@
 use crate::prelude::*;
-use arch::cpu::SystemTime;
 use arch::cpu::CONFIGS;
 use arch::power::POWER;
+use arch::time::SystemTime;
 use crossbeam::atomic::AtomicCell;
 use owo_colors::OwoColorize;
 

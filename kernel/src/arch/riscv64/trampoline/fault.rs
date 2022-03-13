@@ -1,10 +1,10 @@
 use super::TRAPFRAME;
 use crate::prelude::*;
 use arch::backtrace::*;
-use arch::cpu::SystemTime;
-use arch::cpu::LOCAL;
+use arch::cpu::checked_local;
 use arch::power::POWER;
 use arch::stdout::STDOUT;
+use arch::time::SystemTime;
 use core::alloc::Layout;
 use core::fmt::Write;
 use crossbeam::atomic::AtomicCell;
@@ -19,7 +19,7 @@ extern "C" {
 }
 
 pub unsafe fn panic_handler() {
-    if LOCAL.get_id().is_some() {
+    if checked_local().and_then(|local| local.get_id()).is_some() {
         (*TRAPFRAME.get()).fault_counter += 1;
     }
 }
@@ -50,10 +50,13 @@ unsafe extern "C" fn fault_handler() -> ! {
     writeln!(s).unwrap();
 
     write!(s, "{}", "Fault".red()).unwrap();
-    if let Some(ms) = SystemTime::now().checked_duration_since(SystemTime::ZERO).map(|x| x.as_millis()) {
+    if let Some(ms) = SystemTime::now()
+        .checked_duration_since(SystemTime::ZERO)
+        .map(|x| x.as_millis())
+    {
         write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();
     }
-    if let Some(id) = LOCAL.get_id() {
+    if let Some(id) = checked_local().and_then(|local| local.get_id()) {
         write!(s, " [CPU {}]", id).unwrap();
     }
 
@@ -79,15 +82,16 @@ unsafe extern "C" fn fault_handler() -> ! {
     writeln!(s, "scause = {:?}", scause::read().cause()).unwrap();
     writeln!(s, "stval = {:#x}", stval::read()).unwrap();
 
-    writeln!(s, "[Backtrace]").unwrap();
+    if let Some(local) = checked_local() {
+        writeln!(s, "[Backtrace]").unwrap();
 
-    let local_stack = LOCAL.config().stack();
-    let stack = by_points(local_stack.bot as usize, local_stack.top as usize).unwrap();
-    let text = by_points(_text_start.as_usize(), _text_end.as_usize()).unwrap();
+        let local_stack = local.config().stack();
+        let stack = by_points(local_stack.bot as usize, local_stack.top as usize).unwrap();
+        let text = by_points(_text_start.as_usize(), _text_end.as_usize()).unwrap();
 
-    for frame in resolve(stack, text, t.ctx.regs[8], t.ctx.regs[2]) {
-        writeln!(s, "{:?}", frame).unwrap();
+        for frame in resolve(stack, text, t.ctx.regs[8], t.ctx.regs[2]) {
+            writeln!(s, "{:?}", frame).unwrap();
+        }
     }
-
     POWER.shutdown();
 }

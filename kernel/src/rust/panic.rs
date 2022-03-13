@@ -1,8 +1,8 @@
 use crate::prelude::*;
-use arch::cpu::SystemTime;
-use arch::cpu::LOCAL;
+use arch::cpu::checked_local;
 use arch::power::POWER;
 use arch::stdout::STDOUT;
+use arch::time::SystemTime;
 use arch::trampoline::fault;
 use core::fmt::Write;
 use core::panic::PanicInfo;
@@ -24,7 +24,7 @@ fn panic_handler(info: &PanicInfo) -> ! {
     {
         write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();
     }
-    if let Some(id) = LOCAL.get_id() {
+    if let Some(id) = checked_local().and_then(|local| local.get_id()) {
         write!(s, " [CPU {}]", id).unwrap();
     }
     if let Some(location) = info.location() {
