@@ -38,13 +38,7 @@ impl Process {
             thread_set: ThreadSet::new(),
             load_tls: load.tls,
         });
-        if process
-            .handle_set
-            .extend(0, Handle::new(process.clone()))
-            .is_some()
-        {
-            unreachable!();
-        }
+        let _ = process.handle_set.extend(0, Handle::new(process.clone()));
         process.spawn(load.pc, 0).out::<ProcessCreateError>()?;
         Ok(process)
     }

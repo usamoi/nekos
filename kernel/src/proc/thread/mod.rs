@@ -90,25 +90,6 @@ impl TaskFuture for Thread {
 }
 
 impl Environment {
-    pub fn yield_now(&self) -> impl Future<Output = ()> {
-        struct Yield(bool);
-        impl Future for Yield {
-            type Output = ();
-            fn poll(
-                mut self: Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
-            ) -> Poll<Self::Output> {
-                if !self.0 {
-                    self.0 = true;
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else {
-                    Poll::Ready(())
-                }
-            }
-        }
-        Yield(false)
-    }
     pub async fn thread_fault(&self) -> EffKill<!> {
         self.thread
             .status
@@ -165,7 +146,7 @@ impl Environment {
                     self.thread.switch.lock().solve_syscall(ret);
                 }
                 Interrupt(Timer) => {
-                    self.yield_now().await;
+                    yield_now().await;
                 }
                 Interrupt(Software) => {
                     self.handle_signals().await?;

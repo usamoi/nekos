@@ -39,11 +39,11 @@ impl Switch {
     pub fn solve_breakpoint(&mut self) {
         self.ctx.sepc += 2;
     }
-    pub fn solve_syscall(&mut self, ret: Result<isize, Errno>) {
+    pub fn solve_syscall(&mut self, ret: Result<usize, Errno>) {
         match ret {
             Ok(value) => {
                 self.ctx.regs[10] = 0;
-                self.ctx.regs[11] = value as usize;
+                self.ctx.regs[11] = value;
             }
             Err(errno) => {
                 self.ctx.regs[10] = errno.into_raw().get() as usize;

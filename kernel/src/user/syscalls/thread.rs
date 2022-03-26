@@ -1,20 +1,32 @@
 use crate::prelude::*;
-use proc::process::Process;
+use proc::process::{Process, ProcessSpawnError};
 use proc::thread::Thread;
 
 impl Object for Thread {}
 
 impl_syscall!(THREAD_CREATE, 0x50995b56u32);
+impl_errno!(THREAD_CREATE_BAD_STATUS, 0x8f3aa491u32);
+impl_errno!(THREAD_CREATE_OOM, 0xd902abafu32);
+impl_errno!(THREAD_CREATE_OOVM, 0x3b9a81dbu32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_CREATE }> for Syscall {
-    type Arg0 = Handle<Process>;
-    type Arg1 = VAddr;
-    type Arg2 = usize;
-    async fn syscall(env: &Environment, (process, pc, opaque, ..): Self::Args) -> EffSys<isize> {
-        let thread = process.object.spawn(pc, opaque).unwrap();
+    type Do0 = Handle<Process>;
+    type Do1 = VAddr;
+    type Do2 = usize;
+    type Codomain = usize;
+    async fn syscall(
+        env: &Environment,
+        (process, pc, opaque, ..): Self::Domain,
+    ) -> EffSys<Self::Codomain> {
+        use ProcessSpawnError::*;
+        let thread = process.spawn(pc, opaque).map_err(|e| match e {
+            BadStatus => Errno::THREAD_CREATE_BAD_STATUS,
+            OutOfMemory => Errno::THREAD_CREATE_OOM,
+            OutOfVirtualMemory => Errno::THREAD_CREATE_OOVM,
+        })?;
         let handle_id = env.process.handle_set.push(Handle::new(thread));
-        Ok(handle_id as isize)
+        Ok(handle_id)
     }
 }
 
@@ -22,12 +34,37 @@ impl_syscall!(THREAD_KILL, 0xf7c12d13u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_KILL }> for Syscall {
-    type Arg0 = Handle<Thread>;
-    type Arg1 = usize;
-    async fn syscall(_: &Environment, (thread, exit_code, ..): Self::Args) -> EffSys<isize> {
+    type Do0 = Handle<Thread>;
+    type Do1 = usize;
+    async fn syscall(
+        _: &Environment,
+        (thread, exit_code, ..): Self::Domain,
+    ) -> EffSys<Self::Codomain> {
         thread
             .signal_set
             .send(Signal::KillThread(exit_code as isize));
-        Ok(0)
+        Ok(())
+    }
+}
+
+impl_syscall!(THREAD_YIELD, 0x40caac6bu32);
+
+#[async_trait::async_trait]
+impl Syscalls<{ Syscall::THREAD_YIELD }> for Syscall {
+    async fn syscall(_: &Environment, (..): Self::Domain) -> EffSys<Self::Codomain> {
+        yield_now().await;
+        Ok(())
+    }
+}
+
+impl_syscall!(THREAD_EXIT, 0x5a76e1f5u32);
+
+#[async_trait::async_trait]
+impl Syscalls<{ Syscall::THREAD_EXIT }> for Syscall {
+    type Do0 = usize;
+    async fn syscall(env: &Environment, (exit_code, ..): Self::Domain) -> EffSys<Self::Codomain> {
+        env.thread_exit(exit_code as isize)
+            .await
+            .map_err(EffectSys::EffectKill)?;
     }
 }

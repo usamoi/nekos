@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 impl_errno!(ARGUMENT_PERMISSION_INVAILD, 0x6f3528ebu32);
 
-impl Parameter for MapPermission {
+impl Domain for MapPermission {
     fn from_arguments(_: &Environment, [value]: [usize; Self::N]) -> EffSys<Self> {
         if value & !0b111 == 0 {
             Ok(Self {

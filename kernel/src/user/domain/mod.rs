@@ -3,7 +3,7 @@ pub mod map_permission;
 
 use crate::prelude::*;
 
-impl Parameter for () {
+impl Domain for () {
     const N: usize = 0;
 
     fn from_arguments(_: &Environment, []: [usize; Self::N]) -> EffSys<Self> {
@@ -11,19 +11,19 @@ impl Parameter for () {
     }
 }
 
-impl Parameter for usize {
+impl Domain for usize {
     fn from_arguments(_: &Environment, [x]: [usize; Self::N]) -> EffSys<Self> {
         Ok(x)
     }
 }
 
-impl Parameter for isize {
+impl Domain for isize {
     fn from_arguments(_: &Environment, [x]: [usize; Self::N]) -> EffSys<Self> {
         Ok(x as isize)
     }
 }
 
-impl Parameter for VAddr {
+impl Domain for VAddr {
     fn from_arguments(_: &Environment, [x]: [usize; Self::N]) -> EffSys<Self> {
         Ok(VAddr::new(x))
     }

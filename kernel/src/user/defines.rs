@@ -88,10 +88,14 @@ impl HandleUpcast for dyn Object {
 
 pub type Arguments = [usize; 6];
 
-pub trait Parameter: Sized {
+pub trait Domain: Sized {
     const N: usize = 1;
 
     fn from_arguments(env: &Environment, xs: [usize; Self::N]) -> EffSys<Self>;
+}
+
+pub trait Codomain: Sized {
+    fn to_return_value(self) -> usize;
 }
 
 #[must_use]
@@ -125,24 +129,25 @@ impl_errno!(GENERAL_NOT_SUPPORTED, 0xc2966069u32);
 pub struct Syscall(PhantomData<()>);
 
 pub type Args<T, const CODE: u32> = (
-    <T as Syscalls<CODE>>::Arg0,
-    <T as Syscalls<CODE>>::Arg1,
-    <T as Syscalls<CODE>>::Arg2,
-    <T as Syscalls<CODE>>::Arg3,
-    <T as Syscalls<CODE>>::Arg4,
-    <T as Syscalls<CODE>>::Arg5,
+    <T as Syscalls<CODE>>::Do0,
+    <T as Syscalls<CODE>>::Do1,
+    <T as Syscalls<CODE>>::Do2,
+    <T as Syscalls<CODE>>::Do3,
+    <T as Syscalls<CODE>>::Do4,
+    <T as Syscalls<CODE>>::Do5,
 );
 
 #[async_trait::async_trait]
 pub trait Syscalls<const CODE: u32> {
-    type Arg0: Parameter = ();
-    type Arg1: Parameter = ();
-    type Arg2: Parameter = ();
-    type Arg3: Parameter = ();
-    type Arg4: Parameter = ();
-    type Arg5: Parameter = ();
-    type Args: Is<Args<Self, CODE>> = Args<Self, CODE>;
-    async fn syscall(env: &Environment, args: Self::Args) -> EffSys<isize>;
+    type Do0: Domain = ();
+    type Do1: Domain = ();
+    type Do2: Domain = ();
+    type Do3: Domain = ();
+    type Do4: Domain = ();
+    type Do5: Domain = ();
+    type Domain: Is<Args<Self, CODE>> = Args<Self, CODE>;
+    type Codomain: Codomain = ();
+    async fn syscall(env: &Environment, args: Self::Domain) -> EffSys<Self::Codomain>;
 }
 
 pub macro impl_syscall($name:ident, $code:literal) {
