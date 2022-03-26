@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use arch::cpu::checked_local;
 use arch::stdout::STDOUT;
-use arch::time::SystemTime;
+use arch::time::MachineInstant;
 use core::fmt::Write;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use owo_colors::OwoColorize;
@@ -26,8 +26,8 @@ impl Log for Logger {
             Debug => write!(s, "{}", "Debug".blue()).unwrap(),
             Trace => write!(s, "{}", "Trace".cyan()).unwrap(),
         }
-        if let Some(ms) = SystemTime::now()
-            .checked_duration_since(SystemTime::ZERO)
+        if let Some(ms) = MachineInstant::now()
+            .checked_duration_since(MachineInstant::ZERO)
             .map(|x| x.as_millis())
         {
             write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();

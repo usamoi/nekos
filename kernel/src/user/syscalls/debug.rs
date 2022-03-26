@@ -39,7 +39,7 @@ impl_syscall!(DEBUG_YIELD, 0x40caac6bu32);
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::DEBUG_YIELD }> for Syscall {
     async fn syscall(env: &Environment, (..): Self::Args) -> EffSys<isize> {
-        env.thread_yield().await;
+        env.yield_now().await;
         Ok(0)
     }
 }

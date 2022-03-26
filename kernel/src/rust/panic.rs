@@ -2,7 +2,7 @@ use crate::prelude::*;
 use arch::cpu::checked_local;
 use arch::power::POWER;
 use arch::stdout::STDOUT;
-use arch::time::SystemTime;
+use arch::time::MachineInstant;
 use arch::trampoline::fault;
 use core::fmt::Write;
 use core::panic::PanicInfo;
@@ -18,8 +18,8 @@ fn panic_handler(info: &PanicInfo) -> ! {
     writeln!(s).unwrap();
 
     write!(s, "{}", "Panic".red()).unwrap();
-    if let Some(ms) = SystemTime::now()
-        .checked_duration_since(SystemTime::ZERO)
+    if let Some(ms) = MachineInstant::now()
+        .checked_duration_since(MachineInstant::ZERO)
         .map(|x| x.as_millis())
     {
         write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();

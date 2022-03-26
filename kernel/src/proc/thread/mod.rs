@@ -4,12 +4,13 @@ mod signal_set;
 pub use self::signal_set::*;
 
 use crate::prelude::*;
+use crate::sched::scheduler::spawn;
 use arch::cpu::local;
-use arch::time::SystemTime;
+use arch::time::MachineInstant;
 use arch::trampoline::switch::Switch;
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Poll, Waker};
+use core::task::{Context, Poll};
 use core::time::Duration;
 use crossbeam::atomic::AtomicCell;
 use proc::process::Process;
@@ -72,23 +73,42 @@ impl Thread {
         thread
             .future
             .call_once(|| Mutex::new(Environment::make(thread.clone())));
-        sched::scheduler::spawn(thread.clone(), Priority::DEFAULT);
+        spawn(thread.clone(), Priority::DEFAULT);
         Ok(thread)
     }
 }
 
-impl Pollable for Thread {
-    fn poll(&self, waker: Waker, duration: Duration) -> Poll<()> {
-        let mut guard = self.future.get().unwrap().try_lock().unwrap();
-        local().local_set_timer(SystemTime::now() + duration);
+impl TaskFuture for Thread {
+    fn poll(&self, cx: &mut Context, duration: Duration) -> Poll<()> {
+        let mut guard = self.future.get().unwrap().lock();
+        local().local_set_timer(MachineInstant::now() + duration);
         let future = guard.as_mut();
-        let ans = future.poll(&mut core::task::Context::from_waker(&waker));
+        let ans = future.poll(cx);
         drop(guard);
         ans
     }
 }
 
 impl Environment {
+    pub fn yield_now(&self) -> impl Future<Output = ()> {
+        struct Yield(bool);
+        impl Future for Yield {
+            type Output = ();
+            fn poll(
+                mut self: Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+            ) -> Poll<Self::Output> {
+                if !self.0 {
+                    self.0 = true;
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    Poll::Ready(())
+                }
+            }
+        }
+        Yield(false)
+    }
     pub async fn thread_fault(&self) -> EffKill<!> {
         self.thread
             .status
@@ -110,25 +130,6 @@ impl Environment {
             .thread_set
             .on_thread_killed(&self.thread);
         Err(EffectKill::Kill)
-    }
-    pub fn thread_yield(&self) -> impl Future<Output = ()> {
-        struct Yield(bool);
-        impl Future for Yield {
-            type Output = ();
-            fn poll(
-                mut self: Pin<&mut Self>,
-                cx: &mut core::task::Context<'_>,
-            ) -> Poll<Self::Output> {
-                if !self.0 {
-                    self.0 = true;
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else {
-                    Poll::Ready(())
-                }
-            }
-        }
-        Yield(false)
     }
     pub async fn forever(&self) -> EffKill<!> {
         use self::Exception::*;
@@ -164,7 +165,7 @@ impl Environment {
                     self.thread.switch.lock().solve_syscall(ret);
                 }
                 Interrupt(Timer) => {
-                    self.thread_yield().await;
+                    self.yield_now().await;
                 }
                 Interrupt(Software) => {
                     self.handle_signals().await?;

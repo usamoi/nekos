@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use arch::cpu::CONFIGS;
 use arch::power::POWER;
-use arch::time::SystemTime;
+use arch::time::MachineInstant;
 use crossbeam::atomic::AtomicCell;
 use owo_colors::OwoColorize;
 
@@ -13,7 +13,7 @@ pub fn runner(tests: &[&dyn Fn()]) -> ! {
         }
     }
     println!("running {} tests", tests.len());
-    let start_time = SystemTime::now();
+    let start_time = MachineInstant::now();
     let mut count = 0;
     for test in tests {
         count += 1;
@@ -23,7 +23,7 @@ pub fn runner(tests: &[&dyn Fn()]) -> ! {
         print!("{}", "passed".green());
         println!();
     }
-    let duration = SystemTime::now().duration_since(start_time);
+    let duration = MachineInstant::now().duration_since(start_time);
     println!("test result: done. {} passed.", count);
     println!("finished in {:?}.", duration);
     POWER.shutdown();

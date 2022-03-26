@@ -1,7 +1,7 @@
 use crate::arch::macros::thread_pointer;
 use crate::prelude::*;
 use arch::sbi::legacy::{remote_fence_i, remote_sfence_vma};
-use arch::time::SystemTime;
+use arch::time::MachineInstant;
 use core::cell::Cell;
 use crossbeam::atomic::AtomicCell;
 use riscv::register::sie;
@@ -91,7 +91,7 @@ impl Local {
     pub fn config(&self) -> &Config {
         self.get_config().unwrap()
     }
-    pub fn local_set_timer(&self, time: SystemTime) {
+    pub fn local_set_timer(&self, time: MachineInstant) {
         arch::sbi::timer::set_timer(time.into_raw()).unwrap();
     }
     pub fn local_fence_ins(&self) {

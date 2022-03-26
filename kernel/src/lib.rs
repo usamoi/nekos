@@ -18,6 +18,7 @@
 #![feature(inline_const)]
 #![feature(int_log, int_roundings)]
 #![feature(label_break_value)]
+#![feature(map_first_last)]
 #![feature(negative_impls)]
 #![feature(never_type)]
 #![feature(new_uninit)]

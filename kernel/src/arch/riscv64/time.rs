@@ -6,12 +6,12 @@ use core::time::Duration;
 use riscv::register::time;
 
 #[derive(Debug, Clone, Copy, derive_more::Add)]
-pub struct SystemTime(u64);
+pub struct MachineInstant(u64);
 
-impl SystemTime {
+impl MachineInstant {
     pub const ZERO: Self = Self(0);
     pub fn now() -> Self {
-        SystemTime(time::read64())
+        MachineInstant(time::read64())
     }
     pub const fn into_raw(self) -> u64 {
         self.0
@@ -30,13 +30,13 @@ impl SystemTime {
     }
 }
 
-impl Add<Duration> for SystemTime {
-    type Output = SystemTime;
+impl Add<Duration> for MachineInstant {
+    type Output = MachineInstant;
 
     fn add(self, rhs: Duration) -> Self::Output {
         let freq = local().config().get_frequency().unwrap().frequency;
-        SystemTime(self.0 + rhs.as_micros() as u64 * (freq / 1_000_000))
+        MachineInstant(self.0 + rhs.as_micros() as u64 * (freq / 1_000_000))
     }
 }
 
-impl !Send for SystemTime {}
+impl !Send for MachineInstant {}
