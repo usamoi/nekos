@@ -96,26 +96,18 @@ impl PageTableFrame {
     }
 }
 
-unsafe fn find(
-    root: &PhysBox<PageTableFrame>,
-    vpns: &[usize],
-) -> Result<*mut PageTableEntry, InnerError> {
-    use InnerError::*;
+unsafe fn find(root: &PhysBox<PageTableFrame>, vpns: &[usize]) -> *mut PageTableEntry {
     assert!(!vpns.is_empty());
     let mut child = &mut (*root.get())[vpns[0]];
     for idx in vpns.iter().copied().skip(1) {
-        ensure!(child.get_valid(), Overlapping);
-        ensure!(child.is_inode(), Overlapping);
+        assert!(child.get_valid(), "Overlapping");
+        assert!(child.is_inode(), "Overlapping");
         child = &mut (*child.get_addr().to_mut::<PageTableFrame>())[idx];
     }
-    Ok(child)
+    child
 }
 
-unsafe fn alloc(
-    root: &PhysBox<PageTableFrame>,
-    vpns: &[usize],
-) -> Result<*mut PageTableEntry, InnerError> {
-    use InnerError::*;
+unsafe fn alloc(root: &PhysBox<PageTableFrame>, vpns: &[usize]) -> *mut PageTableEntry {
     assert!(!vpns.is_empty());
     let mut child = &mut (*root.get())[vpns[0]];
     for idx in vpns.iter().copied().skip(1) {
@@ -124,15 +116,15 @@ unsafe fn alloc(
                 PAddrAligned::new(PhysBox::new(PageTableFrame::new()).unwrap().into_raw()).unwrap();
             *child = PageTableEntry::new_inode(addr);
         }
-        ensure!(child.is_inode(), Overlapping);
+        assert!(child.is_inode(), "Overlapping");
         child = &mut (*child.get_addr().to_mut::<PageTableFrame>())[idx];
     }
-    Ok(child)
+    child
 }
 
 unsafe fn maintain(root: &PhysBox<PageTableFrame>, mut vpns: &[usize]) {
     while !vpns.is_empty() {
-        let child = &mut *find(root, vpns).unwrap();
+        let child = &mut *find(root, vpns);
         assert!(child.get_valid());
         assert!(child.is_inode());
         let ptf = &mut *child.get_addr().to_mut::<PageTableFrame>();

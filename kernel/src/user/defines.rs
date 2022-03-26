@@ -1,7 +1,90 @@
 use crate::prelude::*;
 use common::basic::Is;
+use core::any::Any;
+use core::cmp::Ordering;
 use core::marker::PhantomData;
 use core::num::NonZeroU32;
+
+pub type HandleID = usize;
+
+pub trait Object: Any + Send + Sync + ObjectUpcast {}
+
+pub trait ObjectUpcast: Any + Send + Sync {
+    fn upcast(self: Arc<Self>) -> Arc<dyn Any + Send + Sync>;
+}
+
+impl<T: Any + Send + Sync + Sized> ObjectUpcast for T {
+    fn upcast(self: Arc<Self>) -> Arc<dyn Any + Send + Sync> {
+        self
+    }
+}
+
+#[derive(Deref)]
+pub struct Handle<T: ?Sized = dyn Object> {
+    pub object: Arc<T>,
+}
+
+impl<T: Object + ?Sized> Handle<T> {
+    pub fn new(object: Arc<T>) -> Handle<T> {
+        Handle { object }
+    }
+    pub fn downcast<U: Object>(self) -> Option<Handle<U>> {
+        let object = Arc::downcast::<U>(self.object.upcast()).ok()?;
+        Some(Handle { object })
+    }
+}
+
+impl<T: HandleUpcast> Handle<T> {
+    pub fn upcast(self) -> Handle {
+        HandleUpcast::upcast(self)
+    }
+}
+
+impl<T: Object + ?Sized> Clone for Handle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            object: self.object.clone(),
+        }
+    }
+}
+
+impl<T: Object + ?Sized> PartialEq for Handle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        PartialEq::eq(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+    }
+}
+
+impl<T: Object + ?Sized> Eq for Handle<T> {}
+
+impl<T: Object + ?Sized> PartialOrd for Handle<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        PartialOrd::partial_cmp(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+    }
+}
+
+impl<T: Object + ?Sized> Ord for Handle<T> {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        Ord::cmp(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+    }
+}
+
+pub trait HandleUpcast: Object {
+    fn upcast(this: Handle<Self>) -> Handle;
+}
+
+impl<T: Object + Sized> HandleUpcast for T {
+    fn upcast(this: Handle<Self>) -> Handle {
+        Handle {
+            object: this.object,
+        }
+    }
+}
+
+impl HandleUpcast for dyn Object {
+    fn upcast(this: Handle<Self>) -> Handle {
+        this
+    }
+}
 
 pub type Arguments = [usize; 6];
 

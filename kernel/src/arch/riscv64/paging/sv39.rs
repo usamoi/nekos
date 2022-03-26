@@ -56,24 +56,24 @@ impl PageTableMut {
         assert!(offset == 0);
         if align == 4 * 1024 {
             unsafe {
-                let pte = alloc(&self.root, &[p3, p2, p1])?;
-                ensure!(!(*pte).get_valid(), Overlapping);
+                let pte = alloc(&self.root, &[p3, p2, p1]);
+                assert!(!(*pte).get_valid(), "Overlapping");
                 pte.write(PageTableEntry::new_leaf(paddr, permission, user, global));
                 return Ok(());
             }
         }
         if align == 2 * 1024 * 1024 {
             unsafe {
-                let pte = alloc(&self.root, &[p3, p2])?;
-                ensure!(!(*pte).get_valid(), Overlapping);
+                let pte = alloc(&self.root, &[p3, p2]);
+                assert!(!(*pte).get_valid(), "Overlapping");
                 pte.write(PageTableEntry::new_leaf(paddr, permission, user, global));
                 return Ok(());
             }
         }
         if align == 1024 * 1024 * 1024 {
             unsafe {
-                let pte = alloc(&self.root, &[p3])?;
-                ensure!(!(*pte).get_valid(), Overlapping);
+                let pte = alloc(&self.root, &[p3]);
+                assert!(!(*pte).get_valid(), "Overlapping");
                 pte.write(PageTableEntry::new_leaf(paddr, permission, user, global));
                 return Ok(());
             }
@@ -89,8 +89,8 @@ impl PageTableMut {
         assert!(offset == 0);
         if align == 4 * 1024 {
             unsafe {
-                let pte = find(&self.root, &[p3, p2, p1])?;
-                ensure!((*pte).get_valid(), Overlapping);
+                let pte = find(&self.root, &[p3, p2, p1]);
+                assert!((*pte).get_valid(), "Overlapping");
                 let paddr = (*pte).get_addr().into();
                 pte.write_volatile(PageTableEntry::new());
                 maintain(&self.root, &[p3, p2]);
@@ -99,8 +99,8 @@ impl PageTableMut {
         }
         if align == 2 * 1024 * 1024 {
             unsafe {
-                let pte = find(&self.root, &[p3, p2])?;
-                ensure!((*pte).get_valid(), Overlapping);
+                let pte = find(&self.root, &[p3, p2]);
+                assert!((*pte).get_valid(), "Overlapping");
                 let paddr = (*pte).get_addr().into();
                 pte.write_volatile(PageTableEntry::new());
                 maintain(&self.root, &[p3]);
@@ -109,8 +109,8 @@ impl PageTableMut {
         }
         if align == 1024 * 1024 * 1024 {
             unsafe {
-                let pte = find(&self.root, &[p3])?;
-                ensure!((*pte).get_valid(), Overlapping);
+                let pte = find(&self.root, &[p3]);
+                assert!((*pte).get_valid(), "Overlapping");
                 let paddr = (*pte).get_addr().into();
                 pte.write_volatile(PageTableEntry::new());
                 maintain(&self.root, &[]);

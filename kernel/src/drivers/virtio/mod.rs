@@ -1,4 +1,5 @@
 pub mod mmio;
+pub mod queue;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
