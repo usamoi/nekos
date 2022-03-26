@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use common::basic::{env_cast, env_match};
+use core::time::Duration;
 
 // kernel
 pub static KERNEL_ADDRESS: PAddr = PAddr::new(env_cast!("kernel_address"));
@@ -28,3 +29,6 @@ pub const FAULT_STACK_SIZE: usize = 8 * 1024;
 pub const PROCESS_INITPROC: usize = 0;
 pub const PROCESS_RESERVE_HANDLES: usize = 65536;
 pub const THREAD_STACK_LAYOUT: MapLayout = MapLayout::new(16 * 1024, 4096).unwrap();
+
+// schedule
+pub const SCHEDULE_TIMESLICE: Duration = Duration::from_millis(10);

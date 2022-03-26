@@ -1,7 +1,6 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
 use core::task::{RawWaker, RawWakerVTable, Waker};
-use core::time::Duration;
 use proc::process::Process;
 use spin::{Lazy, Mutex};
 
@@ -30,7 +29,7 @@ impl SchedulerQueue {
 }
 
 pub struct Scheduler {
-    queue: Mutex<SchedulerQueue>,
+    pub queue: Mutex<SchedulerQueue>,
 }
 
 impl Scheduler {
@@ -44,7 +43,7 @@ impl Scheduler {
 
 pub(in crate::sched) static SCHEDULER: Singleton<Scheduler> = Singleton::new();
 
-pub fn spawn(future: Arc<dyn TaskFuture>, priority: Priority) -> Arc<Task> {
+pub fn spawn(future: Arc<dyn PreemptiveFuture>, priority: Priority) -> Arc<Task> {
     let mut queue = SCHEDULER.queue.lock();
     // todo: fix the bad behavior if all threads are blocked
     let vruntime = queue.vruntime().unwrap_or(Vruntime::new(0));
@@ -59,22 +58,26 @@ pub unsafe fn init_boot() {
     });
 }
 
-pub fn make_waker(callback: impl Fn()) -> Waker {
-    // do not remove the type annotation!
-    let f: Arc<Box<dyn Fn()>> = Arc::new(Box::new(callback));
+fn waker(task: Arc<Task>) -> Waker {
     unsafe fn vtable() -> &'static RawWakerVTable {
-        type T = Box<dyn Fn()>;
         &RawWakerVTable::new(
             |data| {
-                Arc::increment_strong_count(data as *const T);
+                Arc::increment_strong_count(data as *const Task);
                 RawWaker::new(data, vtable())
             },
-            |data| Arc::from_raw(data as *const T)(),
-            |data| (*(data as *const T))(),
-            |data| Arc::decrement_strong_count(data as *const T),
+            |data| {
+                let arc = Arc::from_raw(data as *const Task);
+                Task::resched(arc)
+            },
+            |data| {
+                let arc = core::mem::ManuallyDrop::new(Arc::from_raw(data as *const Task));
+                Task::resched((*arc).clone())
+            },
+            |data| Arc::decrement_strong_count(data as *const Task),
         )
     }
-    unsafe { Waker::from_raw(RawWaker::new(Arc::into_raw(f) as *const (), vtable())) }
+    let data = Arc::into_raw(task) as *const ();
+    unsafe { Waker::from_raw(RawWaker::new(data, vtable())) }
 }
 
 static INITPROC: Lazy<Arc<Process>> =
@@ -86,25 +89,10 @@ pub fn forever() -> ! {
             panic!("initproc exited unexpectedly",);
         }
         if let Some(task) = SCHEDULER.pop() {
-            let duration = Duration::from_millis(10);
-            let waker = make_waker({
-                let task = task.clone();
-                move || {
-                    let mut queue = SCHEDULER.queue.lock();
-                    if let Some(queue_vruntime) = queue.vruntime() {
-                        let limit_num =
-                            queue_vruntime.index() + 1000000u128 / task.priority().index() as u128;
-                        let limit = Vruntime::new(limit_num);
-                        task.set_vruntime(core::cmp::max(task.vruntime(), limit));
-                    }
-                    queue.insert(task.clone());
-                }
-            });
+            let duration = config::SCHEDULE_TIMESLICE;
+            let waker = waker(task.clone());
             let cx = &mut core::task::Context::from_waker(&waker);
-            let _ = task.future.poll(cx, duration);
-            task.set_vruntime(Vruntime::new(
-                task.vruntime().index() + 1000000u128 / task.priority().index() as u128,
-            ));
+            task.poll(cx, duration);
         }
     }
 }

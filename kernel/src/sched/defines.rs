@@ -44,23 +44,32 @@ impl Default for Priority {
     }
 }
 
-pub trait TaskFuture: Send + Sync {
+pub trait PreemptiveFuture: Send + Sync {
     fn poll(&self, cx: &mut Context, duration: Duration) -> Poll<()>;
 }
 
 pub struct Task {
-    pub(in crate::sched) future: Arc<dyn TaskFuture>,
+    future: Arc<dyn PreemptiveFuture>,
     vruntime: AtomicCell<Vruntime>,
     priority: AtomicCell<Priority>,
 }
 
 impl Task {
-    pub fn new(future: Arc<dyn TaskFuture>, vruntime: Vruntime, priority: Priority) -> Arc<Task> {
+    pub fn new(
+        future: Arc<dyn PreemptiveFuture>,
+        vruntime: Vruntime,
+        priority: Priority,
+    ) -> Arc<Task> {
         Arc::new(Task {
             future,
             vruntime: AtomicCell::new(vruntime),
             priority: AtomicCell::new(priority),
         })
+    }
+    pub fn poll(&self, cx: &mut Context, duration: Duration) {
+        let step = 1000000000u128 / self.priority().index() as u128;
+        let _ = self.future.poll(cx, duration);
+        self.set_vruntime(Vruntime::new(self.vruntime().index() + step));
     }
     pub fn vruntime(&self) -> Vruntime {
         self.vruntime.load()
@@ -73,5 +82,15 @@ impl Task {
     }
     pub fn set_priority(&self, priority: Priority) {
         self.priority.store(priority);
+    }
+    pub fn resched(self: Arc<Task>) {
+        let step = 1000000000u128 / self.priority().index() as u128;
+        let mut queue = crate::sched::scheduler::SCHEDULER.queue.lock();
+        if let Some(queue_vruntime) = queue.vruntime() {
+            let limit_num = queue_vruntime.index() + step;
+            let limit = Vruntime::new(limit_num);
+            self.set_vruntime(core::cmp::max(self.vruntime(), limit));
+        }
+        queue.insert(self);
     }
 }

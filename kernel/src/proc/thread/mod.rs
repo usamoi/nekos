@@ -78,7 +78,7 @@ impl Thread {
     }
 }
 
-impl TaskFuture for Thread {
+impl PreemptiveFuture for Thread {
     fn poll(&self, cx: &mut Context, duration: Duration) -> Poll<()> {
         let mut guard = self.future.get().unwrap().lock();
         local().local_set_timer(MachineInstant::now() + duration);
