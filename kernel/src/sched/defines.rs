@@ -2,6 +2,7 @@ use crate::prelude::*;
 use core::task::{Context, Poll};
 use core::time::Duration;
 use crossbeam::atomic::AtomicCell;
+use futures::task::ArcWake;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Vruntime(u128);
@@ -92,5 +93,14 @@ impl Task {
             self.set_vruntime(core::cmp::max(self.vruntime(), limit));
         }
         queue.insert(self);
+    }
+}
+
+impl ArcWake for Task {
+    fn wake(self: Arc<Self>) {
+        self.resched()
+    }
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.clone().resched()
     }
 }

@@ -18,9 +18,18 @@ pub struct Desc {
     pub next: ReadWrite<u16>,
 }
 
+impl Desc {
+    pub fn has_next(&self) -> bool {
+        self.flags.read() & DescFlags::NEXT != DescFlags::NONE
+    }
+    pub fn is_writable(&self) -> bool {
+        self.flags.read() & DescFlags::WRITE != DescFlags::NONE
+    }
+}
+
 #[repr(C)]
-#[derive(Debug, Clone, Copy, BitAnd, BitOr, BitXor)]
-pub struct DescFlags(u16);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, BitAnd, BitOr, BitXor)]
+pub struct DescFlags(pub u16);
 
 impl DescFlags {
     pub const NONE: Self = Self(0);

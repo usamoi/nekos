@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use common::basic::Is;
 use core::any::Any;
 use core::cmp::Ordering;
 use core::marker::PhantomData;
@@ -89,9 +88,7 @@ impl HandleUpcast for dyn Object {
 pub type Arguments = [usize; 6];
 
 pub trait Domain: Sized {
-    const N: usize = 1;
-
-    fn from_arguments(env: &Environment, xs: [usize; Self::N]) -> EffSys<Self>;
+    fn from_arguments(env: &Environment, x: usize) -> EffSys<Self>;
 }
 
 pub trait Codomain: Sized {
@@ -128,30 +125,31 @@ impl_errno!(GENERAL_NOT_SUPPORTED, 0xc2966069u32);
 
 pub struct Syscall(PhantomData<()>);
 
-pub type Args<T, const CODE: u32> = (
-    <T as Syscalls<CODE>>::Do0,
-    <T as Syscalls<CODE>>::Do1,
-    <T as Syscalls<CODE>>::Do2,
-    <T as Syscalls<CODE>>::Do3,
-    <T as Syscalls<CODE>>::Do4,
-    <T as Syscalls<CODE>>::Do5,
-);
-
 #[async_trait::async_trait]
 pub trait Syscalls<const CODE: u32> {
-    type Do0: Domain = ();
-    type Do1: Domain = ();
-    type Do2: Domain = ();
-    type Do3: Domain = ();
-    type Do4: Domain = ();
-    type Do5: Domain = ();
-    type Domain: Is<Args<Self, CODE>> = Args<Self, CODE>;
+    type Domain0: Domain = ();
+    type Domain1: Domain = ();
+    type Domain2: Domain = ();
+    type Domain3: Domain = ();
+    type Domain4: Domain = ();
+    type Domain5: Domain = ();
     type Codomain: Codomain = ();
-    async fn syscall(env: &Environment, args: Self::Domain) -> EffSys<Self::Codomain>;
+    async fn syscall(env: &Environment, args: syscall_domain!()) -> EffSys<Self::Codomain>;
 }
 
 pub macro impl_syscall($name:ident, $code:literal) {
     impl Syscall {
         pub const $name: u32 = $code;
     }
+}
+
+pub macro syscall_domain() {
+    (
+        Self::Domain0,
+        Self::Domain1,
+        Self::Domain2,
+        Self::Domain3,
+        Self::Domain4,
+        Self::Domain5,
+    )
 }

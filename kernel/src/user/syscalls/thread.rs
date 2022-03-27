@@ -11,13 +11,13 @@ impl_errno!(THREAD_CREATE_OOVM, 0x3b9a81dbu32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_CREATE }> for Syscall {
-    type Do0 = Handle<Process>;
-    type Do1 = VAddr;
-    type Do2 = usize;
+    type Domain0 = Handle<Process>;
+    type Domain1 = VAddr;
+    type Domain2 = usize;
     type Codomain = usize;
     async fn syscall(
         env: &Environment,
-        (process, pc, opaque, ..): Self::Domain,
+        (process, pc, opaque, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use ProcessSpawnError::*;
         let thread = process.spawn(pc, opaque).map_err(|e| match e {
@@ -34,11 +34,11 @@ impl_syscall!(THREAD_KILL, 0xf7c12d13u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_KILL }> for Syscall {
-    type Do0 = Handle<Thread>;
-    type Do1 = usize;
+    type Domain0 = Handle<Thread>;
+    type Domain1 = usize;
     async fn syscall(
         _: &Environment,
-        (thread, exit_code, ..): Self::Domain,
+        (thread, exit_code, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         thread
             .signal_set
@@ -51,7 +51,7 @@ impl_syscall!(THREAD_YIELD, 0x40caac6bu32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_YIELD }> for Syscall {
-    async fn syscall(_: &Environment, (..): Self::Domain) -> EffSys<Self::Codomain> {
+    async fn syscall(_: &Environment, (..): syscall_domain!()) -> EffSys<Self::Codomain> {
         yield_now().await;
         Ok(())
     }
@@ -61,8 +61,8 @@ impl_syscall!(THREAD_EXIT, 0x5a76e1f5u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_EXIT }> for Syscall {
-    type Do0 = usize;
-    async fn syscall(env: &Environment, (exit_code, ..): Self::Domain) -> EffSys<Self::Codomain> {
+    type Domain0 = usize;
+    async fn syscall(env: &Environment, (exit_code, ..): syscall_domain!()) -> EffSys<Self::Codomain> {
         env.thread_exit(exit_code as isize)
             .await
             .map_err(EffectSys::EffectKill)?;

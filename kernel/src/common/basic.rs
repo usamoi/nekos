@@ -68,14 +68,6 @@ impl<T, U> Id<T, U> {
     }
 }
 
-pub trait Is<T>: Sized {
-    const ID: Id<Self, T>;
-}
-
-impl<T> Is<T> for T {
-    const ID: Id<Self, T> = Id::refl();
-}
-
 #[derive(Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]
 pub enum Either<T, U> {
     Left(T),

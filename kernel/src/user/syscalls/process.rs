@@ -10,11 +10,11 @@ impl_errno!(PROCESS_CREATE_OOVM, 0xbeef68e6u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::PROCESS_CREATE }> for Syscall {
-    type Do0 = usize;
+    type Domain0 = usize;
     type Codomain = usize;
     async fn syscall(
         env: &Environment,
-        (program_name, ..): Self::Domain,
+        (program_name, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use ProcessCreateError::*;
         let process = Process::create(program_name).map_err(|e| match e {
@@ -32,11 +32,11 @@ impl_errno!(PROCESS_KILL_BAD_STATUS, 0xf79b870au32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::PROCESS_KILL }> for Syscall {
-    type Do0 = Handle<Process>;
-    type Do1 = usize;
+    type Domain0 = Handle<Process>;
+    type Domain1 = usize;
     async fn syscall(
         _: &Environment,
-        (process, exit_code, ..): Self::Domain,
+        (process, exit_code, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use ProcessDeath::*;
         use ProcessStopError::*;

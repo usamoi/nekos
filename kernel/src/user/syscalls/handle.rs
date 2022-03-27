@@ -5,7 +5,7 @@ impl_errno!(HANDLE_DROP_NOT_FOUND, 0xfd3b5c6du32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::HANDLE_DROP }> for Syscall {
-    type Do0 = HandleID;
+    type Domain0 = HandleID;
     async fn syscall(
         env: &Environment,
         (handle_id, ..): (HandleID, (), (), (), (), ()),

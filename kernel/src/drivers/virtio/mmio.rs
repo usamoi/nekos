@@ -11,7 +11,7 @@ pub struct MMIO {
 }
 
 impl MMIO {
-    pub unsafe fn new(addr: usize, size: usize) -> VirtIOResult<MMIO> {
+    pub unsafe fn acknowledge(addr: usize, size: usize) -> VirtIOResult<MMIO> {
         let regs = &mut *(addr as *mut MMIORegisters);
         if regs.magic_value.read() != 0x74726976 {
             return Err(VirtIOError::BadMagic);

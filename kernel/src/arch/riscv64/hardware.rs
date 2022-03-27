@@ -53,7 +53,7 @@ fn solve(node: FdtNode) {
                 usize::from_be_bytes(reg[0..core::mem::size_of::<usize>()].try_into().unwrap());
             let size =
                 usize::from_be_bytes(reg[core::mem::size_of::<usize>()..].try_into().unwrap());
-            let mmio = unsafe { drivers::virtio::mmio::MMIO::new(addr, size) };
+            let mmio = unsafe { drivers::virtio::mmio::MMIO::acknowledge(addr, size) };
             match mmio {
                 Ok(mmio) => match mmio.device_id() {
                     DeviceType::Invalid => (),

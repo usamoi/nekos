@@ -5,61 +5,18 @@ pub mod objects;
 pub mod syscalls;
 
 use crate::prelude::*;
-use common::basic::Is;
-use core::mem::MaybeUninit;
 
 async fn solve<const CODE: u32>(env: &Environment, args: Arguments) -> EffSys<usize>
 where
     Syscall: Syscalls<CODE>,
-    [(); <Syscall as Syscalls<CODE>>::Do0::N]:,
-    [(); <Syscall as Syscalls<CODE>>::Do1::N]:,
-    [(); <Syscall as Syscalls<CODE>>::Do2::N]:,
-    [(); <Syscall as Syscalls<CODE>>::Do3::N]:,
-    [(); <Syscall as Syscalls<CODE>>::Do4::N]:,
-    [(); <Syscall as Syscalls<CODE>>::Do5::N]:,
 {
-    fn next_steps<const N: usize, I: Iterator>(this: &mut I) -> Option<[I::Item; N]> {
-        let mut ans = [const { MaybeUninit::uninit() }; N];
-        for i in 0..N {
-            if let Some(x) = this.next() {
-                ans[i].write(x);
-            } else {
-                ans[0..i]
-                    .iter_mut()
-                    .for_each(|x| unsafe { x.assume_init_drop() });
-                return None;
-            }
-        }
-        Some(ans.map(|x| unsafe { x.assume_init() }))
-    }
-    let mut it = args.into_iter();
-    let arg0 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let arg1 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let arg2 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let arg3 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let arg4 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let arg5 = Domain::from_arguments(
-        env,
-        next_steps(&mut it).ok_or(Errno::GENERAL_NOT_SUPPORTED)?,
-    )?;
-    let args = <Syscall as Syscalls<{ CODE }>>::Domain::ID
-        .commutative()
-        .transport((arg0, arg1, arg2, arg3, arg4, arg5));
+    let arg0 = Domain::from_arguments(env, args[0])?;
+    let arg1 = Domain::from_arguments(env, args[1])?;
+    let arg2 = Domain::from_arguments(env, args[2])?;
+    let arg3 = Domain::from_arguments(env, args[3])?;
+    let arg4 = Domain::from_arguments(env, args[4])?;
+    let arg5 = Domain::from_arguments(env, args[5])?;
+    let args = (arg0, arg1, arg2, arg3, arg4, arg5);
     Ok(<Syscall as Syscalls<{ CODE }>>::syscall(env, args)
         .await?
         .to_return_value())

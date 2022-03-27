@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
-use core::task::{RawWaker, RawWakerVTable, Waker};
 use proc::process::Process;
 use spin::{Lazy, Mutex};
 
@@ -58,28 +57,6 @@ pub unsafe fn init_boot() {
     });
 }
 
-fn waker(task: Arc<Task>) -> Waker {
-    unsafe fn vtable() -> &'static RawWakerVTable {
-        &RawWakerVTable::new(
-            |data| {
-                Arc::increment_strong_count(data as *const Task);
-                RawWaker::new(data, vtable())
-            },
-            |data| {
-                let arc = Arc::from_raw(data as *const Task);
-                Task::resched(arc)
-            },
-            |data| {
-                let arc = core::mem::ManuallyDrop::new(Arc::from_raw(data as *const Task));
-                Task::resched((*arc).clone())
-            },
-            |data| Arc::decrement_strong_count(data as *const Task),
-        )
-    }
-    let data = Arc::into_raw(task) as *const ();
-    unsafe { Waker::from_raw(RawWaker::new(data, vtable())) }
-}
-
 static INITPROC: Lazy<Arc<Process>> =
     Lazy::new(|| Process::create(config::PROCESS_INITPROC).expect("initproc created failed"));
 
@@ -90,7 +67,7 @@ pub fn forever() -> ! {
         }
         if let Some(task) = SCHEDULER.pop() {
             let duration = config::SCHEDULE_TIMESLICE;
-            let waker = waker(task.clone());
+            let waker = futures::task::waker(task.clone());
             let cx = &mut core::task::Context::from_waker(&waker);
             task.poll(cx, duration);
         }

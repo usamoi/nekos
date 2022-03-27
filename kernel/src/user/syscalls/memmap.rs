@@ -11,13 +11,13 @@ impl_errno!(AREA_CREATE_OVERLAPPING, 0xb4783099u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::AREA_CREATE }> for Syscall {
-    type Do0 = Handle<Area>;
-    type Do1 = VAddr;
-    type Do2 = usize;
+    type Domain0 = Handle<Area>;
+    type Domain1 = VAddr;
+    type Domain2 = usize;
     type Codomain = usize;
     async fn syscall(
         env: &Environment,
-        (area, addr, size, ..): Self::Domain,
+        (area, addr, size, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use AreaCreateError::*;
         let child = area.create(addr, size).map_err(|e| match e {
@@ -38,13 +38,13 @@ impl_errno!(AREA_FIND_CREATE_OOVM, 0x21cca848u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::AREA_FIND_CREATE }> for Syscall {
-    type Do0 = Handle<Area>;
-    type Do1 = usize;
-    type Do2 = usize;
+    type Domain0 = Handle<Area>;
+    type Domain1 = usize;
+    type Domain2 = usize;
     type Codomain = usize;
     async fn syscall(
         env: &Environment,
-        (area, size, align, ..): Self::Domain,
+        (area, size, align, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use AreaFindCreateError::*;
         let layout = MapLayout::new(size, align).ok_or(Errno::AREA_FIND_CREATE_INVAILD_LAYOUT)?;
@@ -68,13 +68,13 @@ impl_errno!(AREA_MAP_PERMISSION_NOT_SUPPORTED, 0x66c28fbu32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::AREA_MAP }> for Syscall {
-    type Do0 = Handle<Area>;
-    type Do1 = Handle<Memory>;
-    type Do2 = VAddr;
-    type Do3 = MapPermission;
+    type Domain0 = Handle<Area>;
+    type Domain1 = Handle<Memory>;
+    type Domain2 = VAddr;
+    type Domain3 = MapPermission;
     async fn syscall(
         _: &Environment,
-        (area, memory, addr, permission, ..): Self::Domain,
+        (area, memory, addr, permission, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use AreaMapError::*;
         area.map(addr, memory.object, permission)
@@ -98,12 +98,12 @@ impl_errno!(AREA_FIND_MAP_PERMISSION_NOT_SUPPORTED, 0x4dd6df50u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::AREA_FIND_MAP }> for Syscall {
-    type Do0 = Handle<Area>;
-    type Do1 = Handle<Memory>;
-    type Do2 = MapPermission;
+    type Domain0 = Handle<Area>;
+    type Domain1 = Handle<Memory>;
+    type Domain2 = MapPermission;
     async fn syscall(
         _: &Environment,
-        (area, memory, permission, ..): Self::Domain,
+        (area, memory, permission, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use AreaFindMapError::*;
         area.find_map(memory.object, permission)
@@ -123,9 +123,9 @@ impl_errno!(AREA_UNMAP_NOT_FOUND, 0x79a83b50u32);
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::AREA_UNMAP }> for Syscall {
-    type Do0 = Handle<Area>;
-    type Do1 = VAddr;
-    async fn syscall(_: &Environment, (area, addr, ..): Self::Domain) -> EffSys<Self::Codomain> {
+    type Domain0 = Handle<Area>;
+    type Domain1 = VAddr;
+    async fn syscall(_: &Environment, (area, addr, ..): syscall_domain!()) -> EffSys<Self::Codomain> {
         use AreaUnmapError::*;
         area.unmap(addr).map_err(|e| match e {
             UnmapAnArea => Errno::AREA_UNMAP_UNMAP_AN_AREA,
