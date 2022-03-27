@@ -23,11 +23,11 @@ pub macro backtrace() {{
     }
 
     use ::arrayvec::ArrayVec;
-    use $crate::arch::backtrace::resolve;
-    use $crate::arch::common::backtrace::BacktraceFrame;
+    use $crate::arch::abi::frame_pointer;
+    use $crate::arch::abi::get_backtrace;
+    use $crate::arch::abi::stack_pointer;
     use $crate::arch::cpu::local;
-    use $crate::arch::macros::frame_pointer;
-    use $crate::arch::macros::stack_pointer;
+    use $crate::common::backtrace::BacktraceFrame;
     use $crate::config::BACKTRACE_LIMIT;
     use $crate::mem::defines::by_points;
     use $crate::mem::defines::LinkerSymbol;
@@ -38,6 +38,6 @@ pub macro backtrace() {{
         let local_stack = local().config().stack();
         let stack = by_points(local_stack.bot as usize, local_stack.top as usize).unwrap();
         let text = by_points(_text_start.as_usize(), _text_end.as_usize()).unwrap();
-        resolve(stack, text, fp, sp) as ArrayVec<BacktraceFrame, BACKTRACE_LIMIT>
+        get_backtrace(stack, text, fp, sp) as ArrayVec<BacktraceFrame, BACKTRACE_LIMIT>
     }
 }}

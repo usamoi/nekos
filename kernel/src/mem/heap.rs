@@ -52,7 +52,7 @@ impl Heap {
             }),
         }
     }
-    pub fn init_fallback(&self) {
+    pub fn init_global_fallback(&self) {
         let mut inner = self.inner.lock();
         unsafe {
             let start = FALLBACK.as_mut_ptr() as usize;
@@ -60,7 +60,7 @@ impl Heap {
             inner.fallback.init(start, end);
         }
     }
-    pub fn init_slab(&self) {
+    pub fn init_global_slab(&self) {
         let mut inner = self.inner.lock();
         let segment = mem::vmm::SPACE.heap.segment;
         let start = segment.start().to_usize();

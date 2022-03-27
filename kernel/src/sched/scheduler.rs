@@ -1,7 +1,17 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
+use futures::task::ArcWake;
 use proc::process::Process;
 use spin::{Lazy, Mutex};
+
+impl ArcWake for Task {
+    fn wake(self: Arc<Self>) {
+        self.resched()
+    }
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.clone().resched()
+    }
+}
 
 pub struct SchedulerQueue {
     ready: BTreeMap<(Vruntime, usize), Arc<Task>>,
@@ -51,7 +61,7 @@ pub fn spawn(future: Arc<dyn PreemptiveFuture>, priority: Priority) -> Arc<Task>
     task
 }
 
-pub unsafe fn init_boot() {
+pub unsafe fn init_global() {
     SCHEDULER.init(Scheduler {
         queue: Mutex::new(SchedulerQueue::new()),
     });

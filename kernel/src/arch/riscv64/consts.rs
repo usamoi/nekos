@@ -1,9 +1,5 @@
 use crate::prelude::*;
 
-pub const ABI_STACK_ALIGN: usize = 16;
-pub const ABI_STACK_OFFSET: usize = 0;
-pub const ABI_ELF_MACHINE: u16 = 243;
-
 pub const PAGING_ALIGN_LOG: [bool; usize::BITS as usize] = arch::paging::PAGING_ALIGN_LOG;
 pub const PAGING_PERMISSION: [bool; 8] = {
     let mut ans = [false; 8];

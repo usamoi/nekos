@@ -1,6 +1,6 @@
 use crate::prelude::*;
+use arch::abi::thread_pointer;
 use arch::cpu::{checked_local, local};
-use arch::macros::thread_pointer;
 use core::ops::Add;
 use core::time::Duration;
 use riscv::register::time;
@@ -13,7 +13,7 @@ impl MachineInstant {
     pub fn now() -> Self {
         MachineInstant(time::read64())
     }
-    pub const fn into_raw(self) -> u64 {
+    pub const fn value(self) -> u64 {
         self.0
     }
     pub fn checked_duration_since(self, earlier: Self) -> Option<Duration> {

@@ -69,7 +69,7 @@ static TRAMPOLINE: Singleton<VAddr> = Singleton::new();
 #[thread_local]
 static TRAPFRAME: Singleton<PhysBox<TrapFrame>> = Singleton::new();
 
-pub unsafe fn init_boot() {
+pub unsafe fn init_global() {
     TRAMPOLINE.init({
         let trappoline_paddr = _trampoline_start.as_paddr();
         let trampoline_size = _trampoline_end.as_vaddr() - _trampoline_start.as_vaddr();
@@ -84,7 +84,7 @@ pub unsafe fn init_boot() {
     });
 }
 
-pub unsafe fn init_start() {
+pub unsafe fn init_local() {
     stvec::write(
         {
             let trampoline_trap_handler =

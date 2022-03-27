@@ -34,7 +34,7 @@ extern "C" {
     static _bump_end: LinkerSymbol;
 }
 
-pub unsafe fn init_boot() {
+pub unsafe fn init_global() {
     TEMPLATE.init(Template::new());
     let space = KSpace::new();
     CONFIG.bump_alloc(CONFIG.bump_ptr().align_to(4096) - CONFIG.bump_ptr());

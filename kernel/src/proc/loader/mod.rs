@@ -4,8 +4,7 @@ pub use self::errors::*;
 use crate::prelude::*;
 use proc::vmm::UserSpace;
 use user::objects::memory::Memory;
-use zelf::elf::Elf;
-use zelf::elf::ElfType;
+use zelf::elf::{Elf, ElfType};
 use zelf::program::{Program, ProgramFlags, ProgramType, Programs};
 use zelf::{Class, Data, Version};
 
@@ -23,7 +22,6 @@ pub struct ImageTls {
 pub fn load(name: usize) -> Result<Image, LoadError> {
     use LoadError::*;
     let input = common::vdisk::read(name).ok_or(NotFound)?;
-    use arch::consts::ABI_ELF_MACHINE;
     let elf = match Elf::parse(input).map_err(|_| BadElf)? {
         Elf::Little64(e) => e,
         _ => return Err(BadPlatform),
@@ -40,7 +38,7 @@ pub fn load(name: usize) -> Result<Image, LoadError> {
     ensure!(ident.version() == Version::One, BadPlatform);
     ensure!(ident.os_abi() == 0, BadAbi);
     ensure!(ident.abi_version() == 0, BadAbi);
-    ensure!(header.machine() == ABI_ELF_MACHINE, BadPlatform);
+    ensure!(header.machine() == arch::abi::ELF_EABI, BadPlatform);
     ensure!(header.typa() == ElfType::Exec, BadAbi);
     let programs = Programs::parse(elf)?.ok_or(BadElf)?;
     for index in 0..programs.num() {

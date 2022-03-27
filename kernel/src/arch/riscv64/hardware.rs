@@ -8,7 +8,7 @@ extern "C" {
     static _bump_start: LinkerSymbol;
 }
 
-pub unsafe fn init_boot(src_p: *const u8) {
+pub unsafe fn init_global(src_p: *const u8) {
     let dt_magic = u32::from_be(*(src_p as *const u32).offset(0));
     let dt_total_size = u32::from_be(*(src_p as *const u32).offset(1)) as usize;
     if dt_magic != 0xd00dfeed {

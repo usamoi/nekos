@@ -35,7 +35,7 @@ fn panic_handler(info: &PanicInfo) -> ! {
     writeln!(s, " {}", info.message().unwrap()).unwrap();
 
     writeln!(s, "[Backtrace]").unwrap();
-    for stack_frame in arch::common::backtrace::backtrace!() {
+    for stack_frame in common::backtrace::backtrace!() {
         writeln!(s, "{{ {:?} }}", stack_frame).unwrap();
     }
 

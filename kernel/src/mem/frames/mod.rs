@@ -73,7 +73,7 @@ impl Frames {
 
 pub static FRAMES: Singleton<Frames> = Singleton::new();
 
-pub unsafe fn init_boot() {
+pub unsafe fn init_global() {
     use arch::memory::CONFIG;
     let segment = by_points(CONFIG.start(), CONFIG.start() + CONFIG.size()).unwrap();
     let buffer_size = CONFIG.size() / 4096 * 2;

@@ -101,13 +101,13 @@ const fn make_trap(scause: usize, stval: usize, ctx: &Context) -> Trap {
             ],
         }),
         x if x == EX | 3 => Exception(Breakpoint),
-        x if x == IN | 1 => Interrupt(Software),
+        x if x == IN | 1 => Interrupt(Software { value: stval }),
         x if x == IN | 5 => Interrupt(Timer),
-        x if x == IN | 9 => Interrupt(Hardware),
+        x if x == IN | 9 => Interrupt(Hardware { value: stval }),
         _ => Unknown,
     }
 }
 
-pub unsafe fn init_start() {
+pub unsafe fn init_local() {
     (*TRAPFRAME.get()).switch_satp = pt().into_raw();
 }

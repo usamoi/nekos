@@ -1,5 +1,5 @@
-use crate::arch::macros::thread_pointer;
 use crate::prelude::*;
+use arch::abi::thread_pointer;
 use arch::sbi::legacy::{remote_fence_i, remote_sfence_vma};
 use arch::time::MachineInstant;
 use core::cell::Cell;
@@ -76,7 +76,7 @@ impl Local {
         self.id.set(Some(id));
     }
     pub fn get_id(&self) -> Option<usize> {
-        if arch::macros::thread_pointer!() != 0 {
+        if thread_pointer!() != 0 {
             self.id.get()
         } else {
             None
@@ -92,7 +92,7 @@ impl Local {
         self.get_config().unwrap()
     }
     pub fn local_set_timer(&self, time: MachineInstant) {
-        arch::sbi::timer::set_timer(time.into_raw()).unwrap();
+        arch::sbi::timer::set_timer(time.value()).unwrap();
     }
     pub fn local_fence_ins(&self) {
         unsafe {
@@ -165,8 +165,9 @@ impl Configs {
 
 pub static CONFIGS: Configs = Configs::new();
 
-pub unsafe fn init_start(cpuid: usize) {
+pub unsafe fn init_local(cpuid: usize) {
     arch::cpu::LOCAL.set_id(cpuid);
     sie::set_sext();
+    sie::set_ssoft();
     sie::set_stimer();
 }

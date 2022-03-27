@@ -39,12 +39,13 @@ impl Thread {
         let sp = {
             let memory = Memory::create(config::THREAD_STACK_LAYOUT).out::<ThreadCreateError>()?;
             let size = memory.layout().size();
-            let ptr = process
+            let stack_bot = process
                 .space
                 .root
                 .find_map(memory, MapPermission::RW)
                 .out::<ThreadCreateError>()?;
-            ptr + size
+            let stack_top = stack_bot + size;
+            stack_top - arch::abi::STACK_OFFSET
         };
         let tp = match &process.load_tls {
             None => VAddr::new(0),
@@ -148,11 +149,11 @@ impl Environment {
                 Interrupt(Timer) => {
                     yield_now().await;
                 }
-                Interrupt(Software) => {
+                Interrupt(Software { .. }) => {
                     self.handle_signals().await?;
                 }
-                Interrupt(Hardware) => {
-                    panic!("hardware interrupt: not supported");
+                Interrupt(Hardware { value }) => {
+                    panic!("hardware interrupt: not supported (value = {})", value);
                 }
             }
         }

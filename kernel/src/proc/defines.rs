@@ -16,8 +16,8 @@ pub enum Exception {
 #[derive(Debug)]
 pub enum Interrupt {
     Timer,
-    Software,
-    Hardware,
+    Software { value: usize },
+    Hardware { value: usize },
 }
 
 #[derive(Debug)]

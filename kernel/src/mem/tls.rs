@@ -8,7 +8,7 @@ extern "C" {
     static _tbss_end: LinkerSymbol;
 }
 
-pub unsafe fn init_start() {
+pub unsafe fn init_local() {
     let tdata_size = _tdata_end.as_vaddr() - _tdata_start.as_vaddr();
     let tbss_size = _tbss_end.as_vaddr() - _tbss_start.as_vaddr();
     let tdata = core::slice::from_raw_parts(_tdata_start.as_ptr::<u8>(), tdata_size);
@@ -18,5 +18,5 @@ pub unsafe fn init_start() {
     assert!(!tls.is_null());
     core::slice::from_raw_parts_mut(tls, tdata.len()).copy_from_slice(tdata);
     core::slice::from_raw_parts_mut(tls.add(tdata.len()), tbss_size).fill(0);
-    core::arch::asm!("mv tp, {}", in(reg) tls as usize);
+    arch::abi::set_thread_pointer(tls as usize);
 }

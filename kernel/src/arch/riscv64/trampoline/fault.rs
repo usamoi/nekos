@@ -1,6 +1,6 @@
 use super::TRAPFRAME;
 use crate::prelude::*;
-use arch::backtrace::*;
+use arch::abi::get_backtrace;
 use arch::cpu::checked_local;
 use arch::power::POWER;
 use arch::stdout::STDOUT;
@@ -24,17 +24,18 @@ pub unsafe fn panic_handler() {
     }
 }
 
-pub unsafe fn init_start() {
+pub unsafe fn init_local() {
     (*TRAPFRAME.get()).fault_counter = 0;
     (*TRAPFRAME.get()).fault_handler = fault_handler as usize;
     (*TRAPFRAME.get()).fault_gp = _global_pointer.as_usize();
-    (*TRAPFRAME.get()).fault_tp = arch::macros::thread_pointer!();
+    (*TRAPFRAME.get()).fault_tp = arch::abi::thread_pointer!();
     (*TRAPFRAME.get()).fault_sp = {
         let stack_layout =
-            Layout::from_size_align(config::FAULT_STACK_SIZE, arch::consts::ABI_STACK_ALIGN)
-                .unwrap();
+            Layout::from_size_align(config::FAULT_STACK_SIZE, arch::abi::STACK_ALIGN).unwrap();
         let stack_bot = alloc::alloc::alloc(stack_layout);
-        stack_bot.add(config::FAULT_STACK_SIZE) as usize
+        let stack_top = stack_bot.add(config::FAULT_STACK_SIZE) as usize;
+        let stack_addr = stack_top - arch::abi::STACK_OFFSET;
+        stack_addr
     };
 }
 
@@ -89,7 +90,7 @@ unsafe extern "C" fn fault_handler() -> ! {
         let stack = by_points(local_stack.bot as usize, local_stack.top as usize).unwrap();
         let text = by_points(_text_start.as_usize(), _text_end.as_usize()).unwrap();
 
-        for frame in resolve(stack, text, t.ctx.regs[8], t.ctx.regs[2]) {
+        for frame in get_backtrace(stack, text, t.ctx.regs[8], t.ctx.regs[2]) {
             writeln!(s, "{:?}", frame).unwrap();
         }
     }

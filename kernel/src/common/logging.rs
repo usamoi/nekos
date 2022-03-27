@@ -43,7 +43,7 @@ impl Log for Logger {
 
 pub static LOGGER: Logger = Logger;
 
-pub unsafe fn init_boot() {
+pub unsafe fn init_global() {
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(LevelFilter::Trace);
 }

@@ -48,18 +48,18 @@ static mut SATP: AtomicUsize = AtomicUsize::new(0);
 #[no_mangle]
 unsafe extern "C" fn _start(cpuid: usize, opaque: *const u8) -> ! {
     memset_bss();
-    common::logging::init_boot();
+    common::logging::init_global();
     info!("Hello, RISC-V.");
     info!("/* A cat employee is wanted here */");
     info!("BOOT CPUID: {}", cpuid);
     info!("booting");
-    mem::heap::HEAP.init_fallback();
-    arch::hardware::init_boot(opaque);
-    mem::frames::init_boot();
-    mem::vmm::init_boot();
-    arch::trampoline::init_boot();
-    sched::scheduler::init_boot();
-    mem::heap::HEAP.init_slab();
+    mem::heap::HEAP.init_global_fallback();
+    arch::hardware::init_global(opaque);
+    mem::frames::init_global();
+    mem::vmm::init_global();
+    arch::trampoline::init_global();
+    sched::scheduler::init_global();
+    mem::heap::HEAP.init_global_slab();
     SATP.store(mem::vmm::pt().into_raw(), Ordering::SeqCst);
     for config in arch::cpu::CONFIGS.config_iter() {
         if config.id() as usize != cpuid {
@@ -86,11 +86,11 @@ unsafe extern "C" fn _start(cpuid: usize, opaque: *const u8) -> ! {
 #[no_mangle]
 unsafe extern "C" fn _start2(cpuid: usize) -> ! {
     info!("starting");
-    arch::tls::init_start();
-    arch::cpu::init_start(cpuid);
-    arch::trampoline::init_start();
-    arch::trampoline::fault::init_start();
-    arch::trampoline::switch::init_start();
+    mem::tls::init_local();
+    arch::cpu::init_local(cpuid);
+    arch::trampoline::init_local();
+    arch::trampoline::fault::init_local();
+    arch::trampoline::switch::init_local();
     _main();
 }
 
