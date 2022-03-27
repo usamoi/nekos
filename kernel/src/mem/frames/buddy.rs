@@ -161,7 +161,8 @@ impl<'a> Buddy<'a> {
         };
         Ok(addr)
     }
-    pub fn _get(&mut self, segment: Segment<usize>) -> Result<Option<bool>, BuddyError> {
+    #[allow(dead_code)]
+    pub fn get(&mut self, segment: Segment<usize>) -> Result<Option<bool>, BuddyError> {
         use BuddyError::*;
         if segment.is_empty() {
             return Err(ZeroSize);

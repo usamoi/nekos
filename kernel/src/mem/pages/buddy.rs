@@ -143,13 +143,15 @@ impl Buddy {
                 .collect(),
         })
     }
-    pub fn _alloc(&mut self, size: usize) -> Result<usize, BuddyError> {
+    #[allow(dead_code)]
+    pub fn alloc(&mut self, size: usize) -> Result<usize, BuddyError> {
         use BuddyError::*;
         let addr = self.find(size)?;
         self.set(by_size(addr, size).ok_or(OutOfBounds)?, true)?;
         Ok(addr)
     }
-    pub fn _dealloc(&mut self, addr: usize, size: usize) -> Result<(), BuddyError> {
+    #[allow(dead_code)]
+    pub fn dealloc(&mut self, addr: usize, size: usize) -> Result<(), BuddyError> {
         use BuddyError::*;
         self.set(by_size(addr, size).ok_or(OutOfBounds)?, false)
     }
@@ -169,7 +171,8 @@ impl Buddy {
         };
         Ok(addr)
     }
-    pub fn _get(&mut self, segment: Segment<usize>) -> Result<Option<bool>, BuddyError> {
+    #[allow(dead_code)]
+    pub fn get(&mut self, segment: Segment<usize>) -> Result<Option<bool>, BuddyError> {
         use BuddyError::*;
         if segment.is_empty() {
             return Err(ZeroSize);

@@ -30,7 +30,7 @@ impl Mmap for SlabMmap {
         let vaddr = VAddr::new(vaddr);
         let layout = MapLayout::new(4096, 4096).unwrap();
         let paddr = mem::vmm::SPACE.page_table.unmap(vaddr, 4096).unwrap();
-        mem::frames::FRAMES.dealloc(paddr, layout).unwrap();
+        mem::frames::FRAMES.dealloc(paddr, layout);
     }
 }
 
@@ -72,6 +72,9 @@ impl Heap {
 
 unsafe impl GlobalAlloc for Heap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if layout.size() == 0 {
+            return layout.align() as *mut u8;
+        }
         let mut inner = self.inner.lock();
         if let Some(slab) = &mut inner.slab {
             if let Some(addr) = slab.alloc(layout) {
@@ -85,6 +88,10 @@ unsafe impl GlobalAlloc for Heap {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if layout.size() == 0 {
+            assert_eq!(ptr, layout.align() as *mut u8);
+            return;
+        }
         let ptr = NonNull::new(ptr).unwrap();
         let mut inner = self.inner.lock();
         if let Some(slab) = &mut inner.slab {

@@ -277,7 +277,7 @@ impl<M: Mmap> Heap<M> {
     }
     pub fn dealloc(&mut self, addr: NonNull<u8>, layout: Layout) {
         let layout = layout.pad_to_align();
-        if layout.size() > 65536 {
+        if layout.align() > 65536 {
             panic!();
         }
         match layout.size() {

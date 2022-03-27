@@ -20,7 +20,7 @@ impl PointsBox {
                 }
                 Err(e) => {
                     for paddr in points.into_iter() {
-                        FRAMES.dealloc(paddr, point).unwrap();
+                        FRAMES.dealloc(paddr, point);
                     }
                     return Err(e.into());
                 }

@@ -36,18 +36,21 @@ impl Frames {
     // todo: non-continuous alloc
     pub fn alloc(&self, layout: MapLayout) -> Result<PAddr, FramesAllocError> {
         use FramesAllocError::*;
+        if layout.size() == 0 {
+            return Ok(PAddr::new(layout.align()));
+        }
         if layout.align() < 4096 {
             return Err(UndersizeAlign);
         }
         let mut buddy = self.buddy.lock();
-        let paddr = buddy.alloc(layout.size() >> 12)?;
+        let paddr = buddy.alloc(layout.size() >> 12).out::<FramesAllocError>()?;
         Ok(PAddr::new(paddr << 12))
     }
 
-    pub fn dealloc(&self, paddr: PAddr, layout: MapLayout) -> Result<(), FramesDeallocError> {
-        use FramesDeallocError::*;
+    pub fn dealloc(&self, paddr: PAddr, layout: MapLayout) {
         if layout.size() == 0 {
-            return Err(ZeroSize);
+            assert_eq!(paddr, PAddr::new(layout.align()));
+            return;
         }
         assert!(layout.align() >= 4096);
         assert!(layout.check(paddr.to_usize()));
@@ -55,7 +58,6 @@ impl Frames {
         let addr = paddr.to_usize() >> 12;
         let size = layout.size() >> 12;
         buddy.dealloc(addr, size).unwrap();
-        Ok(())
     }
 
     pub unsafe fn set(&self, segment: Segment<PAddr>, val: bool) {

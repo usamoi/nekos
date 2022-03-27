@@ -34,7 +34,6 @@ impl From<ParseProgramError> for LoadError {
 
 fully!(MemoryCreateError, LoadError;
     OutOfMemory => OutOfMemory,
-    ZeroSize => SegmentOfZeroSize,
     UndersizeAlign => SegmentOfUndersizeAlign
 );
 fully!(AreaMapError, LoadError;

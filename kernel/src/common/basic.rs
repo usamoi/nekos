@@ -217,7 +217,7 @@ pub macro partially {
             type Error = ();
             fn try_from(src: $src) -> Result<Self, Self::Error> {
                 match src {
-                    $(<$src>::$variant => Ok(Self::$dst_variant),)*
+                    $(<$src>::$src_variant => Ok(Self::$dst_variant),)*
                     _ => Err(()),
                 }
             }

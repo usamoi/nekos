@@ -58,7 +58,7 @@ impl<T> Drop for PhysBox<T> {
         unsafe {
             core::ptr::drop_in_place(self.get());
         }
-        FRAMES.dealloc(self.paddr, Self::layout()).unwrap();
+        FRAMES.dealloc(self.paddr, Self::layout());
     }
 }
 
