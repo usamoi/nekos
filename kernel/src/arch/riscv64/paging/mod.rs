@@ -133,7 +133,7 @@ unsafe fn maintain(root: &PhysBox<PageTableFrame>, mut vpns: &[usize]) {
                 return;
             }
         }
-        PhysBox::<PageTableFrame>::from_raw(child.get_addr().into());
+        PhysBox::<PageTableFrame>::from_raw(child.get_addr().into(), ());
         *child = PageTableEntry::new();
         vpns = &vpns[..vpns.len() - 1];
     }

@@ -95,7 +95,7 @@ fn dfs_set(height: u8, mut u: &mut Node, addr: usize, query_height: u8, f: impl 
 }
 
 fn dfs_find(height: u8, mut u: &Node, query_height: u8) -> Option<usize> {
-    fn continuos_of(height: u8, u: &Node) -> usize {
+    fn continuous_of(height: u8, u: &Node) -> usize {
         assert!(height <= (usize::BITS - 1) as u8);
         match u {
             Ok(raw) => 1usize << raw.c,
@@ -103,7 +103,7 @@ fn dfs_find(height: u8, mut u: &Node, query_height: u8) -> Option<usize> {
         }
     }
     assert!(height <= (usize::BITS - 1) as u8);
-    if continuos_of(height, u) < (1usize << query_height) {
+    if continuous_of(height, u) < (1usize << query_height) {
         return None;
     }
     let mut addr = 0usize;
@@ -113,7 +113,7 @@ fn dfs_find(height: u8, mut u: &Node, query_height: u8) -> Option<usize> {
             return Some(addr);
         }
         let raw = u.as_ref().unwrap();
-        if continuos_of(i, &raw.right) >= 1usize << query_height {
+        if continuous_of(i, &raw.right) >= 1usize << query_height {
             u = &raw.right;
             addr |= 1 << (i - 1);
         } else {

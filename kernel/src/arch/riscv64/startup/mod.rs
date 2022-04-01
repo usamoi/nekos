@@ -53,13 +53,14 @@ unsafe extern "C" fn _start(cpuid: usize, opaque: *const u8) -> ! {
     info!("/* A cat employee is wanted here */");
     info!("BOOT CPUID: {}", cpuid);
     info!("booting");
-    mem::heap::HEAP.init_global_fallback();
+    mem::heap::init_global_fallback();
     arch::hardware::init_global(opaque);
     mem::frames::init_global();
     mem::vmm::init_global();
     arch::trampoline::init_global();
     sched::scheduler::init_global();
-    mem::heap::HEAP.init_global_slab();
+    mem::heap::init_global_slab();
+    mem::dma::init_global();
     SATP.store(mem::vmm::pt().into_raw(), Ordering::SeqCst);
     for config in arch::cpu::CONFIGS.config_iter() {
         if config.id() as usize != cpuid {

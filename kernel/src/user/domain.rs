@@ -24,7 +24,7 @@ impl Domain for VAddr {
     }
 }
 
-impl_errno!(ARGUMENT_PERMISSION_INVAILD, 0x6f3528ebu32);
+impl_errno!(ARGUMENT_PERMISSION_INVALID, 0x6f3528ebu32);
 
 impl Domain for MapPermission {
     fn from_arguments(_: &Environment, x: usize) -> EffSys<Self> {
@@ -35,7 +35,7 @@ impl Domain for MapPermission {
                 execute: (x & 0b100) != 0,
             })
         } else {
-            Err(Errno::ARGUMENT_PERMISSION_INVAILD.into())
+            Err(Errno::ARGUMENT_PERMISSION_INVALID.into())
         }
     }
 }

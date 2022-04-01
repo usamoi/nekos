@@ -77,7 +77,7 @@ fn dfs_get(nodes: &Nodes, addr: usize, query_height: u8) -> Option<bool> {
 }
 
 fn dfs_find(nodes: &Nodes, query_height: u8) -> Option<usize> {
-    fn continuos_of(nodes: &Nodes, i: usize) -> usize {
+    fn continuous_of(nodes: &Nodes, i: usize) -> usize {
         match nodes.1[i] {
             TOTAL_FALSE => 1usize << (nodes.0 - i.log2() as u8),
             TOTAL_TRUE => 0,
@@ -85,7 +85,7 @@ fn dfs_find(nodes: &Nodes, query_height: u8) -> Option<usize> {
         }
     }
     assert!(nodes.0 <= (usize::BITS - 1) as u8);
-    if continuos_of(nodes, 1) < (1usize << query_height) {
+    if continuous_of(nodes, 1) < (1usize << query_height) {
         return None;
     }
     let mut addr = 0usize;
@@ -96,8 +96,8 @@ fn dfs_find(nodes: &Nodes, query_height: u8) -> Option<usize> {
             return Some(addr);
         }
         let t = 1usize << query_height;
-        let l = continuos_of(nodes, index << 1 | 0);
-        let r = continuos_of(nodes, index << 1 | 1);
+        let l = continuous_of(nodes, index << 1 | 0);
+        let r = continuous_of(nodes, index << 1 | 1);
         if r < t || (t <= l && l <= r) {
             index = index << 1 | 0;
         } else {

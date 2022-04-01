@@ -120,7 +120,7 @@ pub macro impl_errno($name:ident, $code:literal) {
 }
 
 impl_errno!(GENERAL_INTERNAL, 0xa9244d1cu32);
-impl_errno!(GENERAL_INVAILD_SYSCALL, 0x7f06733du32);
+impl_errno!(GENERAL_INVALID_SYSCALL, 0x7f06733du32);
 impl_errno!(GENERAL_NOT_SUPPORTED, 0xc2966069u32);
 
 pub struct Syscall(PhantomData<()>);

@@ -1,6 +1,6 @@
 use super::errors::BoxError;
 use crate::prelude::*;
-use mem::frames::FRAMES;
+use mem::frames;
 use mem::vmm::KMap;
 
 pub struct PointsBox {
@@ -14,13 +14,15 @@ impl PointsBox {
         let mut points = Vec::new();
         points.reserve(layout.size() / layout.align());
         for _ in 0..layout.size() / layout.align() {
-            match FRAMES.alloc(point) {
+            match frames::alloc(point) {
                 Ok(paddr) => {
                     points.push(paddr);
                 }
                 Err(e) => {
                     for paddr in points.into_iter() {
-                        FRAMES.dealloc(paddr, point);
+                        unsafe {
+                            frames::dealloc(paddr, point);
+                        }
                     }
                     return Err(e.into());
                 }

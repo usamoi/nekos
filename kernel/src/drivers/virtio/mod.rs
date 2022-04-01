@@ -33,11 +33,9 @@ pub enum DeviceType {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum VirtIOError {
-    BadDiscovery,
+    BadConfig,
     BadMagic,
     BadVersion,
-    BadParams,
-    IOError,
 }
 
 pub type VirtIOResult<T = ()> = Result<T, VirtIOError>;

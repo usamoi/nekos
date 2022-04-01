@@ -31,7 +31,7 @@ impl Syscalls<{ Syscall::AREA_CREATE }> for Syscall {
 }
 
 impl_syscall!(AREA_FIND_CREATE, 0x261faebcu32);
-impl_errno!(AREA_FIND_CREATE_INVAILD_LAYOUT, 0x17563d43u32);
+impl_errno!(AREA_FIND_CREATE_INVALID_LAYOUT, 0x17563d43u32);
 impl_errno!(AREA_FIND_CREATE_OUT_OF_RANGE, 0xdba30baau32);
 impl_errno!(AREA_FIND_CREATE_ZERO_SIZE, 0xecc00494u32);
 impl_errno!(AREA_FIND_CREATE_OOVM, 0x21cca848u32);
@@ -47,7 +47,7 @@ impl Syscalls<{ Syscall::AREA_FIND_CREATE }> for Syscall {
         (area, size, align, ..): syscall_domain!(),
     ) -> EffSys<Self::Codomain> {
         use AreaFindCreateError::*;
-        let layout = MapLayout::new(size, align).ok_or(Errno::AREA_FIND_CREATE_INVAILD_LAYOUT)?;
+        let layout = MapLayout::new(size, align).ok_or(Errno::AREA_FIND_CREATE_INVALID_LAYOUT)?;
         let new = area.find_create(layout).map_err(|e| match e {
             ZeroSize => Errno::AREA_FIND_CREATE_ZERO_SIZE,
             OutOfRange => Errno::AREA_FIND_CREATE_OUT_OF_RANGE,
@@ -125,7 +125,10 @@ impl_errno!(AREA_UNMAP_NOT_FOUND, 0x79a83b50u32);
 impl Syscalls<{ Syscall::AREA_UNMAP }> for Syscall {
     type Domain0 = Handle<Area>;
     type Domain1 = VAddr;
-    async fn syscall(_: &Environment, (area, addr, ..): syscall_domain!()) -> EffSys<Self::Codomain> {
+    async fn syscall(
+        _: &Environment,
+        (area, addr, ..): syscall_domain!(),
+    ) -> EffSys<Self::Codomain> {
         use AreaUnmapError::*;
         area.unmap(addr).map_err(|e| match e {
             UnmapAnArea => Errno::AREA_UNMAP_UNMAP_AN_AREA,

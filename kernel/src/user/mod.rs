@@ -24,7 +24,7 @@ where
 
 impl Environment {
     pub async fn handle_syscall(&self, id: usize, args: Arguments) -> EffSys<usize> {
-        match id.try_into().map_err(|_| Errno::GENERAL_INVAILD_SYSCALL)? {
+        match id.try_into().map_err(|_| Errno::GENERAL_INVALID_SYSCALL)? {
             Syscall::DEBUG_WRITE => solve::<{ Syscall::DEBUG_WRITE }>(self, args).await,
             Syscall::THREAD_EXIT => solve::<{ Syscall::THREAD_EXIT }>(self, args).await,
             Syscall::HANDLE_DROP => solve::<{ Syscall::HANDLE_DROP }>(self, args).await,
@@ -38,7 +38,7 @@ impl Environment {
             Syscall::AREA_MAP => solve::<{ Syscall::AREA_MAP }>(self, args).await,
             Syscall::AREA_FIND_MAP => solve::<{ Syscall::AREA_FIND_MAP }>(self, args).await,
             Syscall::AREA_UNMAP => solve::<{ Syscall::AREA_UNMAP }>(self, args).await,
-            _ => Err(Errno::GENERAL_INVAILD_SYSCALL.into()),
+            _ => Err(Errno::GENERAL_INVALID_SYSCALL.into()),
         }
     }
 }

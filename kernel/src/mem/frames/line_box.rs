@@ -1,6 +1,6 @@
 use super::errors::BoxError;
 use crate::prelude::*;
-use mem::frames::FRAMES;
+use mem::frames;
 use mem::vmm::KMap;
 
 pub struct LineBox {
@@ -11,7 +11,7 @@ pub struct LineBox {
 impl LineBox {
     pub fn new(layout: MapLayout) -> Result<LineBox, BoxError> {
         Ok(LineBox {
-            paddr: FRAMES.alloc(layout)?,
+            paddr: frames::alloc(layout)?,
             layout,
         })
     }

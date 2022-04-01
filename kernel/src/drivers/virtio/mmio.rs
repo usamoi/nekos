@@ -1,52 +1,51 @@
-use super::*;
+use crate::prelude::*;
 use core::fmt::Debug;
+use drivers::virtio::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use volatile::{ReadOnly, ReadWrite, WriteOnly};
 
 pub struct MMIO {
-    regs: &'static mut MMIORegisters,
-    #[allow(dead_code)]
-    size: usize,
-    queue_sel: Option<u32>,
+    regs: &'static mut Registers,
+    config: &'static mut [u8],
 }
 
 impl MMIO {
-    pub unsafe fn acknowledge(addr: usize, size: usize) -> VirtIOResult<MMIO> {
-        let regs = &mut *(addr as *mut MMIORegisters);
+    pub unsafe fn new(addr: *mut u8, size: usize) -> VirtIOResult<MMIO> {
+        use VirtIOError::*;
+        let regs = &mut *(addr as *mut Registers);
+        let config = core::slice::from_raw_parts_mut(addr, size)
+            .get_mut(100..)
+            .ok_or(BadConfig)?;
         if regs.magic_value.read() != 0x74726976 {
-            return Err(VirtIOError::BadMagic);
+            return Err(BadMagic);
         }
         if regs.version.read() != 0x2 {
-            return Err(VirtIOError::BadVersion);
+            return Err(BadVersion);
         }
-        let mut mmio = MMIO {
-            regs,
-            size,
-            queue_sel: None,
-        };
-        mmio.set_status(DeviceStatus::Acknowledge);
+        let mmio = MMIO { regs, config };
+        mmio.regs.status.write(DeviceStatus::Acknowledge);
         Ok(mmio)
     }
 
-    pub fn on_initializing(&mut self, driver_features: u64) {
+    pub fn init(&mut self, features: u64) {
         self.regs.status.write(DeviceStatus::Driver);
-        self.set_driver_features(driver_features);
+        self.regs.device_features_sel.write(0);
+        self.regs.driver_features.write(features as u32);
+        self.regs.device_features_sel.write(1);
+        self.regs.driver_features.write((features >> 32) as u32);
         self.regs.status.write(DeviceStatus::FeaturesOk);
-    }
-
-    pub fn on_initialized(&mut self) {
         self.regs.status.write(DeviceStatus::DriverOk);
     }
 
-    pub fn set_status(&mut self, x: DeviceStatus) {
-        self.regs.status.write(x);
-    }
-
-    pub fn device_id(&self) -> DeviceType {
+    pub fn device(&self) -> DeviceType {
         self.regs.device_id.read().try_into().unwrap()
     }
 
-    pub fn device_features(&mut self) -> u64 {
+    pub fn vendor(&self) -> u32 {
+        self.regs.vendor_id.read()
+    }
+
+    pub fn features(&mut self) -> u64 {
         self.regs.device_features_sel.write(0);
         let low = self.regs.device_features.read();
         self.regs.device_features_sel.write(1);
@@ -54,37 +53,56 @@ impl MMIO {
         ((high as u64) << 32) | low as u64
     }
 
-    pub fn set_driver_features(&mut self, features: u64) {
-        self.regs.device_features_sel.write(0);
-        self.regs.driver_features.write(features as u32);
-        self.regs.device_features_sel.write(1);
-        self.regs.driver_features.write((features >> 32) as u32);
+    pub fn status(&mut self) -> DeviceStatus {
+        self.regs.status.read()
     }
 
-    pub fn set_notify(&mut self, queue: u32) {
-        self.regs.queue_notify.write(queue);
+    pub fn interrupt_status(&mut self) -> u32 {
+        self.regs.interrupt_status.read()
+    }
+
+    pub fn interrupt_ack(&mut self) -> bool {
+        let interrupt = self.regs.interrupt_status.read();
+        if interrupt != 0 {
+            self.regs.interrupt_ack.write(interrupt);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn config_generation(&self) -> u32 {
         self.regs.config_generation.read()
     }
 
-    pub fn config(&self) -> *mut u8 {
-        unsafe { (self as *const _ as *mut u8).offset(100) }
+    pub fn config_data(&mut self) -> &mut [u8] {
+        self.config
     }
 
-    fn set_queue_sel(&mut self, x: u32) {
-        if let Some(queue_sel) = self.queue_sel {
-            if queue_sel == x {
-                return;
-            }
-        }
-        self.regs.queue_sel.write(x);
-        self.queue_sel = Some(x);
+    pub fn queue_select(&mut self, index: u32) {
+        self.regs.queue_sel.write(index);
     }
 
-    pub fn queue(&mut self, x: u32) -> MMIOQueue<'_> {
-        MMIOQueue { i: x, mmio: self }
+    pub fn queue_max_size(&self) -> u32 {
+        self.regs.queue_num_max.read()
+    }
+
+    pub fn queue_init(&mut self, size: u32, desc: u64, avail: u64, used: u64) {
+        self.regs.queue_num.write(size);
+        self.regs.queue_desc_low.write(desc as u32);
+        self.regs.queue_desc_high.write((desc >> 32) as u32);
+        self.regs.queue_driver_low.write(avail as u32);
+        self.regs.queue_driver_high.write((avail >> 32) as u32);
+        self.regs.queue_device_low.write(used as u32);
+        self.regs.queue_device_high.write((used >> 32) as u32);
+    }
+
+    pub fn queue_wake(&mut self) {
+        self.regs.queue_ready.write(1);
+    }
+
+    pub fn queue_notify(&mut self, value: u32) {
+        self.regs.queue_notify.write(value);
     }
 }
 
@@ -94,55 +112,8 @@ impl Debug for MMIO {
     }
 }
 
-pub struct MMIOQueue<'a> {
-    i: u32,
-    mmio: &'a mut MMIO,
-}
-
-impl MMIOQueue<'_> {
-    pub fn queue_num_max(&mut self) -> u32 {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_num_max.read()
-    }
-
-    pub fn set_queue_num(&mut self, num: u32) {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_num.write(num);
-    }
-
-    pub fn queue_ready(&mut self) -> bool {
-        self.mmio.set_queue_sel(self.i);
-        let r = self.mmio.regs.queue_ready.read();
-        assert!(r == 0 || r == 1);
-        r == 1
-    }
-
-    pub fn set_queue_ready(&mut self, x: bool) {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_ready.write(x as u32);
-    }
-
-    pub fn set_descriptor(&mut self, x: u64) {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_desc_low.write(x as u32);
-        self.mmio.regs.queue_desc_high.write((x >> 32) as u32);
-    }
-
-    pub fn set_avail(&mut self, x: u64) {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_driver_low.write(x as u32);
-        self.mmio.regs.queue_driver_high.write((x >> 32) as u32);
-    }
-
-    pub fn set_used(&mut self, x: u64) {
-        self.mmio.set_queue_sel(self.i);
-        self.mmio.regs.queue_device_low.write(x as u32);
-        self.mmio.regs.queue_device_high.write((x >> 32) as u32);
-    }
-}
-
 #[repr(C)]
-pub struct MMIORegisters {
+pub struct Registers {
     magic_value: ReadOnly<u32>,
     version: ReadOnly<u32>,
     device_id: ReadOnly<u32>,
@@ -184,7 +155,7 @@ pub struct MMIORegisters {
     config_generation: ReadOnly<u32>,
 }
 
-static_assertions::assert_eq_size!(MMIORegisters, [u8; 0x100]);
+static_assertions::assert_eq_size!(Registers, [u8; 0x100]);
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]

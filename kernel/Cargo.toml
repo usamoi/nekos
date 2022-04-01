@@ -13,6 +13,7 @@ path = "src/rust/main.rs"
 array-init = { version = "2.0.0" }
 arrayvec = { version = "0.7.2", default-features = false }
 async-trait = { version = "0.1.52" }
+buddy_system_allocator = "0.8.0"
 cfg-if = { version = "1.0.0" }
 crossbeam = { version = "0.8.1", default-features = false, features = ["alloc"] }
 derive_more = { version = "0.99.17" }

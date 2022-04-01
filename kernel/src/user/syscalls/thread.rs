@@ -62,7 +62,10 @@ impl_syscall!(THREAD_EXIT, 0x5a76e1f5u32);
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_EXIT }> for Syscall {
     type Domain0 = usize;
-    async fn syscall(env: &Environment, (exit_code, ..): syscall_domain!()) -> EffSys<Self::Codomain> {
+    async fn syscall(
+        env: &Environment,
+        (exit_code, ..): syscall_domain!(),
+    ) -> EffSys<Self::Codomain> {
         env.thread_exit(exit_code as isize)
             .await
             .map_err(EffectSys::EffectKill)?;

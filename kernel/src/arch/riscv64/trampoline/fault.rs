@@ -34,8 +34,7 @@ pub unsafe fn init_local() {
             Layout::from_size_align(config::FAULT_STACK_SIZE, arch::abi::STACK_ALIGN).unwrap();
         let stack_bot = alloc::alloc::alloc(stack_layout);
         let stack_top = stack_bot.add(config::FAULT_STACK_SIZE) as usize;
-        let stack_addr = stack_top - arch::abi::STACK_OFFSET;
-        stack_addr
+        stack_top - arch::abi::STACK_OFFSET
     };
 }
 

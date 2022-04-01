@@ -11,7 +11,7 @@ use spin::Mutex;
 static mut FALLBACK: [u8; config::FALLBACK_HEAP_SIZE] = [0; config::FALLBACK_HEAP_SIZE];
 
 #[global_allocator]
-pub static HEAP: Heap = Heap::new();
+static HEAP: Heap = Heap::new();
 
 pub struct SlabMmap;
 
@@ -19,7 +19,7 @@ impl Mmap for SlabMmap {
     fn map(vaddr: usize) {
         let vaddr = VAddr::new(vaddr);
         let layout = MapLayout::new(4096, 4096).unwrap();
-        let paddr = mem::frames::FRAMES.alloc(layout).unwrap();
+        let paddr = mem::frames::alloc(layout).unwrap();
         mem::vmm::SPACE
             .page_table
             .map(vaddr, paddr, 4096, MapPermission::RW, false, false)
@@ -30,7 +30,9 @@ impl Mmap for SlabMmap {
         let vaddr = VAddr::new(vaddr);
         let layout = MapLayout::new(4096, 4096).unwrap();
         let paddr = mem::vmm::SPACE.page_table.unmap(vaddr, 4096).unwrap();
-        mem::frames::FRAMES.dealloc(paddr, layout);
+        unsafe {
+            mem::frames::dealloc(paddr, layout);
+        }
     }
 }
 
@@ -52,22 +54,24 @@ impl Heap {
             }),
         }
     }
-    pub fn init_global_fallback(&self) {
-        let mut inner = self.inner.lock();
-        unsafe {
-            let start = FALLBACK.as_mut_ptr() as usize;
-            let end = start + FALLBACK.len();
-            inner.fallback.init(start, end);
-        }
+}
+
+pub fn init_global_fallback() {
+    let mut inner = HEAP.inner.lock();
+    unsafe {
+        let start = FALLBACK.as_mut_ptr() as usize;
+        let end = start + FALLBACK.len();
+        inner.fallback.init(start, end);
     }
-    pub fn init_global_slab(&self) {
-        let mut inner = self.inner.lock();
-        let segment = mem::vmm::SPACE.heap.segment;
-        let start = segment.start().to_usize();
-        let end = segment.end().unwrap().to_usize();
-        let slab = SlabHeap::<SlabMmap>::new(start, end);
-        inner.slab = Some(slab);
-    }
+}
+
+pub fn init_global_slab() {
+    let mut inner = HEAP.inner.lock();
+    let segment = mem::vmm::SPACE.heap.segment;
+    let start = segment.start().to_usize();
+    let end = segment.end().unwrap().to_usize();
+    let slab = SlabHeap::<SlabMmap>::new(start, end);
+    inner.slab = Some(slab);
 }
 
 unsafe impl GlobalAlloc for Heap {

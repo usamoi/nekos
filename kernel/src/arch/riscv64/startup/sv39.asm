@@ -16,7 +16,7 @@ _satp:
     .section .rodata
     .balign 4096
 _pt:
-    // postive
+    // positive
     .8byte 0x0000000000 >> 12 << 10 | 0b001111
     .8byte 0x0040000000 >> 12 << 10 | 0b001111
     .8byte 0x0080000000 >> 12 << 10 | 0b001111
