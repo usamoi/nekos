@@ -1,7 +1,6 @@
-use crate::prelude::*;
+use crate::{drivers::manager, prelude::*};
 use arch::cpu::{Config, CONFIGS};
 use core::alloc::Layout;
-use drivers::virtio::DeviceType;
 use fdt::{node::FdtNode, Fdt};
 
 extern "C" {
@@ -53,16 +52,11 @@ fn solve(node: FdtNode) {
                 usize::from_be_bytes(reg[0..core::mem::size_of::<usize>()].try_into().unwrap());
             let size =
                 usize::from_be_bytes(reg[core::mem::size_of::<usize>()..].try_into().unwrap());
-            let mmio = unsafe { drivers::virtio::mmio::MMIO::new(addr as *mut u8, size) };
-            match mmio {
-                Ok(mmio) => match mmio.device() {
-                    DeviceType::Invalid => (),
-                    fallback => {
-                        warn!("no driver for the MMIO device {:?}", fallback);
-                    }
-                },
-                Err(e) => warn!("failed to acknowledge the device, reason = {:?}", e),
-            }
+            let int = node
+                .interrupts()
+                .map(Iterator::collect)
+                .unwrap_or_else(Vec::new);
+            manager::register(PAddr::new(addr), size, int);
         }
     }
 }

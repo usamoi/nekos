@@ -1,7 +1,6 @@
 use crate::prelude::*;
 use core::fmt::Debug;
 use drivers::virtio::*;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use volatile::{ReadOnly, ReadWrite, WriteOnly};
 
 pub struct MMIO {
@@ -14,7 +13,7 @@ impl MMIO {
         use VirtIOError::*;
         let regs = &mut *(addr as *mut Registers);
         let config = core::slice::from_raw_parts_mut(addr, size)
-            .get_mut(100..)
+            .get_mut(0x100..)
             .ok_or(BadConfig)?;
         if regs.magic_value.read() != 0x74726976 {
             return Err(BadMagic);
@@ -22,19 +21,35 @@ impl MMIO {
         if regs.version.read() != 0x2 {
             return Err(BadVersion);
         }
-        let mmio = MMIO { regs, config };
-        mmio.regs.status.write(DeviceStatus::Acknowledge);
-        Ok(mmio)
+        Ok(Self { regs, config })
     }
 
-    pub fn init(&mut self, features: u64) {
-        self.regs.status.write(DeviceStatus::Driver);
+    pub fn init_ack(&mut self) {
+        self.regs
+            .status
+            .write(self.regs.status.read() | DeviceStatus::ACKNOWLEDGE);
+    }
+
+    pub fn init_driver(&mut self) {
+        self.regs
+            .status
+            .write(self.regs.status.read() | DeviceStatus::DRIVER);
+    }
+
+    pub fn init_features_ok(&mut self, features: u64) {
         self.regs.device_features_sel.write(0);
         self.regs.driver_features.write(features as u32);
         self.regs.device_features_sel.write(1);
         self.regs.driver_features.write((features >> 32) as u32);
-        self.regs.status.write(DeviceStatus::FeaturesOk);
-        self.regs.status.write(DeviceStatus::DriverOk);
+        self.regs
+            .status
+            .write(self.regs.status.read() | DeviceStatus::FEATURES_OK);
+    }
+
+    pub fn init_driver_ok(&mut self) {
+        self.regs
+            .status
+            .write(self.regs.status.read() | DeviceStatus::DRIVER_OK);
     }
 
     pub fn device(&self) -> DeviceType {
@@ -97,7 +112,14 @@ impl MMIO {
         self.regs.queue_device_high.write((used >> 32) as u32);
     }
 
-    pub fn queue_wake(&mut self) {
+    pub fn queue_lock(&mut self, queue: u32) {
+        self.regs.queue_sel.write(queue);
+        self.regs.queue_ready.write(0);
+        self.regs.queue_ready.read();
+    }
+
+    pub fn queue_unlock(&mut self, queue: u32) {
+        self.regs.queue_sel.write(queue);
         self.regs.queue_ready.write(1);
     }
 
@@ -157,13 +179,16 @@ pub struct Registers {
 
 static_assertions::assert_eq_size!(Registers, [u8; 0x100]);
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
-pub enum DeviceStatus {
-    Acknowledge = 1,
-    Driver = 2,
-    Failed = 128,
-    FeaturesOk = 8,
-    DriverOk = 4,
-    DeviceNeedsReset = 64,
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, BitXor, BitAnd, BitOr, Not)]
+pub struct DeviceStatus(pub u32);
+
+impl DeviceStatus {
+    pub const NONE: Self = Self(0);
+    pub const ACKNOWLEDGE: Self = Self(1);
+    pub const DRIVER: Self = Self(1 << 1);
+    pub const DRIVER_OK: Self = Self(1 << 2);
+    pub const FEATURES_OK: Self = Self(1 << 3);
+    pub const DRIVER_NEEDS_RESET: Self = Self(1 << 6);
+    pub const FAILED: Self = Self(1 << 7);
 }

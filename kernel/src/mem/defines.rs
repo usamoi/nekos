@@ -86,6 +86,7 @@ impl const Addr for usize {
 pub struct PAddr(usize);
 
 impl PAddr {
+    pub const NULL: Self = PAddr::new(0);
     pub const fn new(x: usize) -> Self {
         Self(x)
     }

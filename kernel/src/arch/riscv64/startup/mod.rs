@@ -61,6 +61,7 @@ unsafe extern "C" fn _start(cpuid: usize, opaque: *const u8) -> ! {
     sched::scheduler::init_global();
     mem::heap::init_global_slab();
     mem::dma::init_global();
+    drivers::manager::init_global();
     SATP.store(mem::vmm::pt().into_raw(), Ordering::SeqCst);
     for config in arch::cpu::CONFIGS.config_iter() {
         if config.id() as usize != cpuid {

@@ -3,7 +3,7 @@ use alloc::collections::BTreeMap;
 use drivers::virtio::mmio::MMIO;
 use drivers::virtio::queue::VirtQueue;
 use drivers::virtio::DeviceType;
-use mem::dma::{AsRawDma, DmaAllocator};
+use mem::dma::{DmaAllocator, DmaBox};
 use volatile::Volatile;
 
 pub const QUEUE: u32 = 0;
@@ -12,24 +12,26 @@ pub const QUEUE: u32 = 0;
 pub enum BlkError {
     NotABlk,
     NotSupported,
+    BadConfig,
 }
 
 enum BlkSave {
     Read(
-        Box<BlkRequest, DmaAllocator>,
-        Box<BlkStatus, DmaAllocator>,
-        Box<[u8; 512], DmaAllocator>,
+        DmaBox<BlkRequestHeader>,
+        DmaBox<BlkStatus>,
+        DmaBox<[u8; 512]>,
     ),
     Write(
-        Box<BlkRequest, DmaAllocator>,
-        Box<BlkStatus, DmaAllocator>,
-        Box<[u8; 512], DmaAllocator>,
+        DmaBox<BlkRequestHeader>,
+        DmaBox<BlkStatus>,
+        DmaBox<[u8; 512]>,
     ),
 }
 
+#[derive(Debug)]
 pub enum BlkReturn {
-    Read(BlkStatus, Box<[u8; 512], DmaAllocator>),
-    Write(BlkStatus, Box<[u8; 512], DmaAllocator>),
+    Read(BlkStatus, DmaBox<[u8; 512]>),
+    Write(BlkStatus, DmaBox<[u8; 512]>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,12 +56,18 @@ impl Blk {
         if mmio.device() != DeviceType::Block {
             return Err(BlkError::NotABlk);
         }
-        mmio.init(0);
-        let config = unsafe { &mut *(mmio.config_data().as_mut_ptr() as *mut BlkConfig) };
-        if config.blk_size.read() != 512 {
-            return Err(BlkError::NotSupported);
+        let config_raw = mmio.config_data();
+        if config_raw.len() < core::mem::size_of::<BlkConfig>() {
+            return Err(BlkError::BadConfig);
         }
-        let queue = VirtQueue::new(&mut mmio, 0, 16).unwrap();
+        let config = unsafe { &mut *(mmio.config_data().as_mut_ptr() as *mut BlkConfig) };
+        mmio.init_ack();
+        mmio.init_driver();
+        mmio.init_features_ok(0);
+        dbg!(config.blk_size.read());
+        dbg!(config.capacity.read());
+        let queue = VirtQueue::new(&mut mmio, QUEUE, 16).unwrap();
+        mmio.init_driver_ok();
         Ok(Blk {
             mmio,
             queue,
@@ -71,55 +79,59 @@ impl Blk {
         self.mmio.interrupt_ack();
     }
 
-    pub fn read(
-        &mut self,
-        sector: u64,
-        buffer: Box<[u8; 512], DmaAllocator>,
-    ) -> Result<BlkToken, BlkError> {
-        let request = Box::new_in(BlkRequest::new(BlkRequestType::In, sector), DmaAllocator);
+    pub fn read(&mut self, sector: u64, buffer: DmaBox<[u8; 512]>) -> Result<BlkToken, BlkError> {
+        self.mmio.queue_lock(QUEUE);
+        let request = Box::new_in(
+            BlkRequestHeader::new(BlkRequestType::In, sector),
+            DmaAllocator,
+        );
         let status = Box::new_in(BlkStatus::Ok, DmaAllocator);
         let idx = self
             .queue
             .push(
-                &[request.as_raw_dma()],
-                &[buffer.as_raw_dma(), status.as_raw_dma()],
+                &[request.as_raw_dma_ref()],
+                &[buffer.as_raw_dma_mut(), status.as_raw_dma_mut()],
             )
             .unwrap();
         let token = BlkToken(idx);
         self.saves
             .insert(token, BlkSave::Read(request, status, buffer));
+        self.mmio.queue_unlock(QUEUE);
         self.mmio.queue_notify(QUEUE);
         Ok(token)
     }
 
-    pub fn write(
-        &mut self,
-        sector: u64,
-        buffer: Box<[u8; 512], DmaAllocator>,
-    ) -> Result<BlkToken, BlkError> {
-        let request = Box::new_in(BlkRequest::new(BlkRequestType::Out, sector), DmaAllocator);
+    pub fn write(&mut self, sector: u64, buffer: DmaBox<[u8; 512]>) -> Result<BlkToken, BlkError> {
+        self.mmio.queue_lock(QUEUE);
+        let request = Box::new_in(
+            BlkRequestHeader::new(BlkRequestType::Out, sector),
+            DmaAllocator,
+        );
         let status = Box::new_in(BlkStatus::Ok, DmaAllocator);
         let idx = self
             .queue
             .push(
-                &[request.as_raw_dma(), buffer.as_raw_dma()],
-                &[status.as_raw_dma()],
+                &[request.as_raw_dma_ref(), buffer.as_raw_dma_ref()],
+                &[status.as_raw_dma_mut()],
             )
             .unwrap();
         let token = BlkToken(idx);
         self.saves
             .insert(token, BlkSave::Write(request, status, buffer));
+        self.mmio.queue_unlock(QUEUE);
         self.mmio.queue_notify(QUEUE);
         Ok(token)
     }
 
     pub fn poll(&mut self) -> Option<(BlkToken, BlkReturn)> {
+        self.mmio.queue_lock(QUEUE);
         let token = self.queue.pop().map(|(id, _)| BlkToken(id))?;
         let save = self.saves.remove(&token).unwrap();
         let ret = match save {
             BlkSave::Read(_, status, buffer) => BlkReturn::Read(*status, buffer),
             BlkSave::Write(_, status, buffer) => BlkReturn::Write(*status, buffer),
         };
+        self.mmio.queue_unlock(QUEUE);
         Some((token, ret))
     }
 }
@@ -139,13 +151,13 @@ enum BlkRequestType {
 
 #[repr(C)]
 #[derive(Debug)]
-struct BlkRequest {
+struct BlkRequestHeader {
     typa: BlkRequestType,
     _reserved: u32,
     sector: u64,
 }
 
-impl BlkRequest {
+impl BlkRequestHeader {
     fn new(typa: BlkRequestType, sector: u64) -> Self {
         Self {
             typa,

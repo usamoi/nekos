@@ -39,7 +39,7 @@ pub macro dbg {
         }
     },
     ($($val:expr),+ $(,)?) => {
-        ($($crate::dbg!($val)),+,)
+        ($(dbg!($val)),+,)
     }
 }
 

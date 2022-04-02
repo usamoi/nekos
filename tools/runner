@@ -2,6 +2,7 @@
 
 ARCH="riscv64"
 ROOT=$(dirname "$0")/..
+DISK=$ROOT/.private/image
 
 cp $1 $ROOT/target/runner.elf
 rust-objcopy \
@@ -12,4 +13,6 @@ qemu-system-$ARCH \
     -global virtio-mmio.force-legacy=false \
     -machine virt -bios default \
     -nographic -smp cpus=8 -m 512M \
-    -kernel $ROOT/target/runner.bin
+    -kernel $ROOT/target/runner.bin \
+    -drive file=$DISK,if=none,format=raw,id=x0 \
+    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0

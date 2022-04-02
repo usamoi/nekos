@@ -42,19 +42,10 @@ unsafe impl Allocator for DmaAllocator {
     }
 }
 
-pub fn init_global() {
+pub type DmaBox<T> = Box<T, DmaAllocator>;
+
+pub unsafe fn init_global() {
     DMA.allocator.init(LockedHeapWithRescue::new(rescue));
-}
-
-pub trait AsRawDma {
-    fn as_raw_dma(&self) -> (PAddr, usize);
-}
-
-impl<T: ?Sized> AsRawDma for Box<T, DmaAllocator> {
-    fn as_raw_dma(&self) -> (PAddr, usize) {
-        (
-            PAddr::new(self.as_ref() as *const T as *const () as usize),
-            core::mem::size_of_val(self),
-        )
-    }
+    let paddr = mem::frames::alloc(MapLayout::new(4096 * 4, 4096).unwrap()).unwrap();
+    DMA.allocator.lock().init(paddr.to_usize(), 4096 * 4);
 }

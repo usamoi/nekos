@@ -12,6 +12,7 @@
 #![feature(allocator_api)]
 #![feature(asm_const)]
 #![feature(associated_type_defaults)]
+#![feature(bool_to_option)]
 #![feature(coerce_unsized)]
 #![feature(const_convert, const_option, const_trait_impl, const_try)]
 #![feature(custom_test_frameworks)]
