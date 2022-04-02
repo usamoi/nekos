@@ -51,34 +51,6 @@ impl_uintext_for_int!(u64);
 impl_uintext_for_int!(u128);
 impl_uintext_for_int!(usize);
 
-pub trait ConstResultExt {
-    type T;
-    fn const_ok(self) -> Option<Self::T>;
-    fn const_unwrap(self) -> Self::T;
-}
-
-impl<T, U> const ConstResultExt for Result<T, U> {
-    type T = T;
-    fn const_ok(self) -> Option<T>
-    where
-        Self: ~const Drop,
-    {
-        match self {
-            Ok(t) => Some(t),
-            Err(_) => None,
-        }
-    }
-    fn const_unwrap(self) -> T
-    where
-        Self: ~const Drop,
-    {
-        match self {
-            Ok(t) => t,
-            Err(_) => panic!("called `Result::unwrap()` on an `Err` value"),
-        }
-    }
-}
-
 pub trait ConstEq {
     fn const_eq(&self, other: &Self) -> bool;
 }
@@ -141,7 +113,7 @@ macro impl_cfs_for_int($t: ty) {
                     }
                 }
             }
-            match s.as_bytes() {
+            match s.as_bytes() as &[u8] {
                 [0x30, 0x62, bytes @ ..] if bytes.len() > 0 => digits::<2>(bytes),
                 [0x2B, 0x30, 0x62, bytes @ ..] if bytes.len() > 0 => 0 + digits::<2>(bytes),
                 [0x2D, 0x30, 0x62, bytes @ ..] if bytes.len() > 0 => 0 - digits::<2>(bytes),

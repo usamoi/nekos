@@ -89,19 +89,13 @@ impl<T, U> Either<T, U> {
             Right(_) => true,
         }
     }
-    pub const fn unwrap_left(self) -> T
-    where
-        Self: ~const Drop,
-    {
+    pub fn unwrap_left(self) -> T {
         match self {
             Left(x) => x,
             Right(_) => panic!("called `Either::unwrap_left()` on an `Right` value"),
         }
     }
-    pub const fn unwrap_right(self) -> U
-    where
-        Self: ~const Drop,
-    {
+    pub fn unwrap_right(self) -> U {
         match self {
             Left(_) => panic!("called `Either::unwrap_right()` on an `Left` value"),
             Right(x) => x,
@@ -156,7 +150,10 @@ pub trait ErrorOut: Sized {
     type U;
     fn try_out<S: TryFrom<Self::U>>(self) -> Result<Result<Self::T, S>, S::Error>;
     fn out<S: TryFrom<Self::U>>(self) -> Result<Self::T, S> {
-        self.try_out().const_unwrap()
+        match self.try_out() {
+            Ok(e) => e,
+            Err(_) => panic!(),
+        }
     }
 }
 
