@@ -10,7 +10,9 @@ rustflags = [
     "-Ccode-model=medium",
     "-Crelocation-model=static",
     "-Cforce-frame-pointers=yes",
-    "-Clink-args=-T src/arch/riscv64/linker.ld",
-    "-Clink-args=-z nognustack",
+    "-Clinker=riscv64-unknown-elf-ld",
+    "-Clinker-flavor=ld",
+    "-Clink-args=-T src/platform/riscv64/linker.ld",
     "-Clink-args=--no-dynamic-linker",
+    "-Clink-args=-no-pie",
 ]

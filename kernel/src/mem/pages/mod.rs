@@ -1,12 +1,34 @@
 mod buddy;
 
-mod errors;
-pub use self::errors::*;
-
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
 use buddy::Buddy;
 use spin::{Mutex, MutexGuard};
+
+#[derive(Debug)]
+pub enum PagesNewError {
+    ZeroSize,
+}
+
+#[derive(Debug)]
+pub enum PagesAcquireError {
+    ZeroSize,
+    OutOfRange,
+    Overlapping,
+}
+
+#[derive(Debug)]
+pub enum PagesReleaseError {
+    NotFound,
+}
+
+#[derive(Debug)]
+pub enum PagesFindError {
+    ZeroSize,
+    OutOfVirtualMemory,
+}
+
+fully!(buddy::BuddyError, PagesFindError; ZeroSize => ZeroSize, OutOfBounds => OutOfVirtualMemory);
 
 fn map(segment: Segment<VAddr>) -> Segment<usize> {
     let end = segment.end().map(|x| x.to_usize());

@@ -1,113 +1,259 @@
 use crate::prelude::*;
-use core::alloc::GlobalAlloc;
-use core::alloc::Layout;
-use core::ptr::{null_mut, NonNull};
-use nekos_heap::fallback::Heap as FallbackHeap;
-use nekos_heap::slab::Heap as SlabHeap;
-use nekos_heap::Mmap;
+use core::alloc::AllocError;
+use core::alloc::{Allocator, Layout};
+use core::ptr::NonNull;
+use crossbeam::atomic::AtomicCell;
+use mem::vmm::SPACE;
+use rt::paging::Paging;
 use spin::Mutex;
 
-#[link_section = ".uninit"]
-static mut FALLBACK: [u8; config::FALLBACK_HEAP_SIZE] = [0; config::FALLBACK_HEAP_SIZE];
-
-#[global_allocator]
-static HEAP: Heap = Heap::new();
-
-pub struct SlabMmap;
-
-impl Mmap for SlabMmap {
-    fn map(vaddr: usize) {
-        let vaddr = VAddr::new(vaddr);
-        let layout = MapLayout::new(4096, 4096).unwrap();
-        let paddr = mem::frames::alloc(layout).unwrap();
-        mem::vmm::SPACE
-            .page_table
-            .map(vaddr, paddr, 4096, MapPermission::RW, false, false)
-            .unwrap();
-    }
-
-    fn unmap(vaddr: usize) {
-        let vaddr = VAddr::new(vaddr);
-        let layout = MapLayout::new(4096, 4096).unwrap();
-        let paddr = mem::vmm::SPACE.page_table.unmap(vaddr, 4096).unwrap();
-        unsafe {
-            mem::frames::dealloc(paddr, layout);
-        }
-    }
+fn def_map(ptr: usize) {
+    let layout = MapLayout::new(4096, 4096).unwrap();
+    SPACE
+        .page_table
+        .map(
+            VAddr::new(ptr),
+            mem::frames::alloc(layout).unwrap(),
+            4096,
+            Permission::RW,
+            false,
+            false,
+        )
+        .unwrap();
 }
 
-struct HeapInner {
-    slab: Option<SlabHeap<SlabMmap>>,
-    fallback: FallbackHeap,
-}
-
-pub struct Heap {
-    inner: Mutex<HeapInner>,
-}
-
-impl Heap {
-    pub const fn new() -> Self {
-        Self {
-            inner: Mutex::new(HeapInner {
-                slab: None,
-                fallback: FallbackHeap::new(),
-            }),
-        }
-    }
-}
-
-pub fn init_global_fallback() {
-    let mut inner = HEAP.inner.lock();
+fn def_unmap(ptr: usize) {
+    let layout = MapLayout::new(4096, 4096).unwrap();
+    let paddr = SPACE.page_table.unmap(VAddr::new(ptr), 4096).unwrap();
     unsafe {
-        let start = FALLBACK.as_mut_ptr() as usize;
-        let end = start + FALLBACK.len();
-        inner.fallback.init(start, end);
+        mem::frames::dealloc(paddr, layout);
     }
 }
 
-pub fn init_global_slab() {
-    let mut inner = HEAP.inner.lock();
-    let segment = mem::vmm::SPACE.heap.segment;
-    let start = segment.start().to_usize();
-    let end = segment.end().unwrap().to_usize();
-    let slab = SlabHeap::<SlabMmap>::new(start, end);
-    inner.slab = Some(slab);
+// 32 <= S < 4096, T = S * 65536 / 4096
+struct LinkedList<const S: usize, const T: usize> {
+    addr: usize,
+    count: [u8; T],
+    next: [u16; 65536],
+    head: Option<u16>,
 }
 
-unsafe impl GlobalAlloc for Heap {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if layout.size() == 0 {
-            return layout.align() as *mut u8;
+impl<const S: usize, const T: usize> LinkedList<S, T> {
+    const fn new() -> Self {
+        Self {
+            addr: 0,
+            count: [0u8; T],
+            next: [0u16; 65536],
+            head: Some(0),
         }
-        let mut inner = self.inner.lock();
-        if let Some(slab) = &mut inner.slab {
-            if let Some(addr) = slab.alloc(layout) {
-                return addr.as_ptr();
-            }
+    }
+    fn init(&mut self, addr: &mut usize) {
+        self.addr = *addr;
+        *addr += S * 65536;
+        for i in 0..65535 {
+            self.next[i as usize] = i + 1;
         }
-        if let Some(addr) = inner.fallback.alloc(layout) {
-            return addr.as_ptr();
+        self.next[65535] = 65535;
+    }
+    fn test(&self, ptr: NonNull<u8>) -> bool {
+        let addr = ptr.as_ptr() as usize;
+        self.addr <= addr && addr < self.addr + S * 65536
+    }
+    fn alloc(&mut self) -> Option<NonNull<u8>> {
+        let x = self.head.take()?;
+        if self.next[x as usize] != x {
+            self.head = Some(self.next[x as usize]);
         }
-        null_mut()
+        let page = (x as usize * S) / 4096;
+        if self.count[page] == 0 {
+            def_map(self.addr + page * 4096);
+        }
+        self.count[page] += 1;
+        Some(NonNull::new((self.addr + (x as usize) * S) as *mut u8).unwrap())
+    }
+    fn dealloc(&mut self, ptr: NonNull<u8>) {
+        assert!(self.test(ptr));
+        let x = ((ptr.as_ptr() as usize - self.addr) / S) as u16;
+        self.next[x as usize] = self.head.take().unwrap_or(x);
+        self.head = Some(x);
+        let page = (x as usize * S) / 4096;
+        self.count[page] -= 1;
+        if self.count[page] == 0 {
+            def_unmap(self.addr + page * 4096);
+        }
+    }
+}
+
+// S = 4096k
+struct Bitmap<const S: usize> {
+    addr: usize,
+    bits: u64,
+}
+
+impl<const S: usize> Bitmap<S> {
+    const fn new() -> Self {
+        Self {
+            addr: 0,
+            bits: u64::MAX,
+        }
+    }
+    fn init(&mut self, addr: &mut usize) {
+        self.addr = *addr;
+        *addr += S * 64;
+    }
+    fn test(&self, ptr: NonNull<u8>) -> bool {
+        let addr = ptr.as_ptr() as usize;
+        self.addr <= addr && addr < self.addr + S * 64
+    }
+    fn alloc(&mut self) -> Option<NonNull<u8>> {
+        let x = self.bits.checked_log2()?;
+        self.bits ^= 1 << x;
+        for i in 0..(S / 4096) {
+            def_map(self.addr + (x as usize) * S + i * 4096);
+        }
+        Some(NonNull::new((self.addr + x as usize * S) as *mut u8).unwrap())
+    }
+    fn dealloc(&mut self, ptr: NonNull<u8>) {
+        assert!(self.test(ptr));
+        let x = (ptr.as_ptr() as usize - self.addr) / S;
+        self.bits ^= 1 << x;
+        for i in 0..(S / 4096) {
+            def_unmap(self.addr + (x as usize) * S + i * 4096);
+        }
+    }
+}
+
+static L1: Mutex<LinkedList<32, { 32 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L2: Mutex<LinkedList<64, { 64 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L3: Mutex<LinkedList<128, { 128 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L4: Mutex<LinkedList<256, { 256 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L5: Mutex<LinkedList<512, { 512 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L6: Mutex<LinkedList<1024, { 1024 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static L7: Mutex<LinkedList<2048, { 2048 * 65536 / 4096 }>> = Mutex::new(LinkedList::new());
+static B0: Mutex<Bitmap<{ 4 << 10 }>> = Mutex::new(Bitmap::new());
+static B1: Mutex<Bitmap<{ 8 << 10 }>> = Mutex::new(Bitmap::new());
+static B2: Mutex<Bitmap<{ 16 << 10 }>> = Mutex::new(Bitmap::new());
+static B3: Mutex<Bitmap<{ 32 << 10 }>> = Mutex::new(Bitmap::new());
+static B4: Mutex<Bitmap<{ 64 << 10 }>> = Mutex::new(Bitmap::new());
+static B5: Mutex<Bitmap<{ 128 << 10 }>> = Mutex::new(Bitmap::new());
+static B6: Mutex<Bitmap<{ 256 << 10 }>> = Mutex::new(Bitmap::new());
+static B7: Mutex<Bitmap<{ 512 << 10 }>> = Mutex::new(Bitmap::new());
+static B8: Mutex<Bitmap<{ 1 << 20 }>> = Mutex::new(Bitmap::new());
+static B9: Mutex<Bitmap<{ 2 << 20 }>> = Mutex::new(Bitmap::new());
+static BA: Mutex<Bitmap<{ 4 << 20 }>> = Mutex::new(Bitmap::new());
+static BB: Mutex<Bitmap<{ 8 << 20 }>> = Mutex::new(Bitmap::new());
+static BC: Mutex<Bitmap<{ 16 << 20 }>> = Mutex::new(Bitmap::new());
+static BD: Mutex<Bitmap<{ 32 << 20 }>> = Mutex::new(Bitmap::new());
+static BE: Mutex<Bitmap<{ 64 << 20 }>> = Mutex::new(Bitmap::new());
+static BF: Mutex<Bitmap<{ 128 << 20 }>> = Mutex::new(Bitmap::new());
+
+static OKAY: AtomicCell<bool> = AtomicCell::new(false);
+
+pub fn init_global() {
+    OKAY.compare_exchange(false, true).unwrap();
+    let mut addr = SPACE.heap_segment().start().to_usize();
+    L1.lock().init(&mut addr);
+    L2.lock().init(&mut addr);
+    L3.lock().init(&mut addr);
+    L4.lock().init(&mut addr);
+    L5.lock().init(&mut addr);
+    L6.lock().init(&mut addr);
+    L7.lock().init(&mut addr);
+    B0.lock().init(&mut addr);
+    B1.lock().init(&mut addr);
+    B2.lock().init(&mut addr);
+    B3.lock().init(&mut addr);
+    B4.lock().init(&mut addr);
+    B5.lock().init(&mut addr);
+    B6.lock().init(&mut addr);
+    B7.lock().init(&mut addr);
+    B8.lock().init(&mut addr);
+    B9.lock().init(&mut addr);
+    BA.lock().init(&mut addr);
+    BB.lock().init(&mut addr);
+    BC.lock().init(&mut addr);
+    BD.lock().init(&mut addr);
+    BE.lock().init(&mut addr);
+    BF.lock().init(&mut addr);
+    if addr > SPACE.heap_segment().end().unwrap().to_usize() {
+        panic!();
+    }
+}
+
+pub struct DefaultAllocator;
+
+unsafe impl Allocator for DefaultAllocator {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        if !OKAY.load() {
+            return Err(AllocError);
+        }
+        let layout = layout.pad_to_align();
+        if layout.align() > 65536 {
+            return Err(AllocError);
+        }
+        let data_address = match layout.size() {
+            0 => NonNull::new(layout.align() as *mut ()).map(|x| x.cast()),
+            0..=32 => L1.lock().alloc(),
+            0..=64 => L2.lock().alloc(),
+            0..=128 => L3.lock().alloc(),
+            0..=256 => L4.lock().alloc(),
+            0..=512 => L5.lock().alloc(),
+            0..=1024 => L6.lock().alloc(),
+            0..=2048 => L7.lock().alloc(),
+            0..=0x1000 => B0.lock().alloc(),
+            0..=0x2000 => B1.lock().alloc(),
+            0..=0x4000 => B2.lock().alloc(),
+            0..=0x8000 => B3.lock().alloc(),
+            0..=0x10000 => B4.lock().alloc(),
+            0..=0x20000 => B5.lock().alloc(),
+            0..=0x40000 => B6.lock().alloc(),
+            0..=0x80000 => B7.lock().alloc(),
+            0..=0x100000 => B8.lock().alloc(),
+            0..=0x200000 => B9.lock().alloc(),
+            0..=0x400000 => BA.lock().alloc(),
+            0..=0x800000 => BB.lock().alloc(),
+            0..=0x1000000 => BC.lock().alloc(),
+            0..=0x2000000 => BD.lock().alloc(),
+            0..=0x4000000 => BE.lock().alloc(),
+            0..=0x8000000 => BF.lock().alloc(),
+            _ => None,
+        }
+        .ok_or(AllocError)?;
+        Ok(NonNull::from_raw_parts(data_address.cast(), layout.size()))
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if layout.size() == 0 {
-            assert_eq!(ptr, layout.align() as *mut u8);
-            return;
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        if !OKAY.load() {
+            panic!();
         }
-        let ptr = NonNull::new(ptr).unwrap();
-        let mut inner = self.inner.lock();
-        if let Some(slab) = &mut inner.slab {
-            if slab.test(ptr) {
-                slab.dealloc(ptr, layout);
-                return;
-            }
+        let layout = layout.pad_to_align();
+        assert!(layout.align() <= 65536);
+        match layout.size() {
+            0 => assert_eq!(ptr.as_ptr() as usize, layout.align()),
+            0..=32 => L1.lock().dealloc(ptr),
+            0..=64 => L2.lock().dealloc(ptr),
+            0..=128 => L3.lock().dealloc(ptr),
+            0..=256 => L4.lock().dealloc(ptr),
+            0..=512 => L5.lock().dealloc(ptr),
+            0..=1024 => L6.lock().dealloc(ptr),
+            0..=2048 => L7.lock().dealloc(ptr),
+            0..=0x1000 => B0.lock().dealloc(ptr),
+            0..=0x2000 => B1.lock().dealloc(ptr),
+            0..=0x4000 => B2.lock().dealloc(ptr),
+            0..=0x8000 => B3.lock().dealloc(ptr),
+            0..=0x10000 => B4.lock().dealloc(ptr),
+            0..=0x20000 => B5.lock().dealloc(ptr),
+            0..=0x40000 => B6.lock().dealloc(ptr),
+            0..=0x80000 => B7.lock().dealloc(ptr),
+            0..=0x100000 => B8.lock().dealloc(ptr),
+            0..=0x200000 => B9.lock().dealloc(ptr),
+            0..=0x400000 => BA.lock().dealloc(ptr),
+            0..=0x800000 => BB.lock().dealloc(ptr),
+            0..=0x1000000 => BC.lock().dealloc(ptr),
+            0..=0x2000000 => BD.lock().dealloc(ptr),
+            0..=0x4000000 => BE.lock().dealloc(ptr),
+            0..=0x8000000 => BF.lock().dealloc(ptr),
+            _ => (),
         }
-        if inner.fallback.test(ptr) {
-            inner.fallback.dealloc(ptr, layout);
-            return;
-        }
-        panic!("dealloc a unknown address, ptr = {:#p}", ptr);
     }
 }

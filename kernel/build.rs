@@ -17,13 +17,16 @@ fn main() {
     println!("cargo:rustc-env=backtrace_limit={}", 64);
     // values: usize
 
+    // backtrace limit
+    println!(
+        "cargo:rustc-env=memfs_initproc={}",
+        "../../../crates/nekos-initproc/target/riscv64gc-unknown-none-elf/debug/nekos-initproc"
+    );
+    // values: usize
+
     match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
         "riscv64" => {
             println!("cargo:rerun-if-changed=src/arch/riscv64/linker.ld");
-
-            // RISC-V paging
-            println!("cargo:rustc-cfg=riscv64_paging=\"{}\"", "sv39");
-            // values: "sv39" | "sv48"
         }
         _ => {
             panic!("unknown target_arch");

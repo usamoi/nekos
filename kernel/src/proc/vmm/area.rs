@@ -1,14 +1,13 @@
-use super::errors::*;
-use super::map::MapProc;
+use super::map::MapUser;
+use super::*;
 use crate::prelude::*;
-use arch::consts::{is_align_supported, is_permission_supported};
-use arch::paging::*;
 use mem::pages::*;
+use rt::paging::Paging;
 
 pub struct Area {
     pub segment: Segment<VAddr>,
-    pub page_table: Arc<PageTable>,
-    pub page_allocator: Pages<Either<Arc<Area>, (Arc<dyn MapProc>, MapPermission)>>,
+    pub page_table: Arc<<P as Platform>::Paging>,
+    pub page_allocator: Pages<Either<Arc<Area>, (Arc<dyn MapUser>, Permission)>>,
 }
 
 impl Area {
@@ -41,13 +40,13 @@ impl Area {
     pub fn map(
         &self,
         vaddr: VAddr,
-        map: Arc<dyn MapProc>,
-        permission: MapPermission,
+        map: Arc<dyn MapUser>,
+        permission: Permission,
     ) -> Result<(), AreaMapError> {
         use AreaMapError::*;
         ensure!(map.layout().check(vaddr.to_usize()), BadAddress);
-        ensure!(is_align_supported(map.layout().align()), AlignNotSupported);
-        ensure!(is_permission_supported(permission), PermissionNotSupported);
+        ensure!(P::paging_align(map.layout().align()), AlignNotSupported);
+        ensure!(P::paging_permission(permission), PermissionNotSupported);
         let segment = by_size(vaddr, map.layout().size()).ok_or(OutOfRange)?;
         self.page_allocator
             .lock()
@@ -63,12 +62,12 @@ impl Area {
     }
     pub fn find_map(
         &self,
-        map: Arc<dyn MapProc>,
-        permission: MapPermission,
+        map: Arc<dyn MapUser>,
+        permission: Permission,
     ) -> Result<VAddr, AreaFindMapError> {
         use AreaFindMapError::*;
-        ensure!(is_align_supported(map.layout().align()), AlignNotSupported);
-        ensure!(is_permission_supported(permission), PermissionNotSupported);
+        ensure!(P::paging_align(map.layout().align()), AlignNotSupported);
+        ensure!(P::paging_permission(permission), PermissionNotSupported);
         let mut guard = self.page_allocator.lock();
         let segment = guard.find(map.layout())?;
         guard

@@ -1,10 +1,10 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
+use base::cell::VolCell;
 use drivers::virtio::mmio::MMIO;
 use drivers::virtio::queue::VirtQueue;
 use drivers::virtio::DeviceType;
 use mem::dma::{DmaAllocator, DmaBox};
-use volatile::Volatile;
 
 pub const QUEUE: u32 = 0;
 
@@ -60,12 +60,10 @@ impl Blk {
         if config_raw.len() < core::mem::size_of::<BlkConfig>() {
             return Err(BlkError::BadConfig);
         }
-        let config = unsafe { &mut *(mmio.config_data().as_mut_ptr() as *mut BlkConfig) };
+        let _config = unsafe { &mut *(mmio.config_data().as_mut_ptr() as *mut BlkConfig) };
         mmio.init_ack();
         mmio.init_driver();
         mmio.init_features_ok(0);
-        dbg!(config.blk_size.read());
-        dbg!(config.capacity.read());
         let queue = VirtQueue::new(&mut mmio, QUEUE, 16).unwrap();
         mmio.init_driver_ok();
         Ok(Blk {
@@ -170,36 +168,36 @@ impl BlkRequestHeader {
 #[repr(C)]
 #[derive(Debug)]
 struct BlkGeometry {
-    cylinders: Volatile<u16>,
-    heads: Volatile<u8>,
-    sectors: Volatile<u8>,
+    cylinders: VolCell<u16>,
+    heads: VolCell<u8>,
+    sectors: VolCell<u8>,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 struct BlkTopology {
-    physical_block_exp: Volatile<u8>,
-    alignment_offset: Volatile<u8>,
-    min_io_size: Volatile<u16>,
-    opt_io_size: Volatile<u32>,
+    physical_block_exp: VolCell<u8>,
+    alignment_offset: VolCell<u8>,
+    min_io_size: VolCell<u16>,
+    opt_io_size: VolCell<u32>,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 struct BlkConfig {
-    capacity: Volatile<u64>,
-    size_max: Volatile<u32>,
-    seg_max: Volatile<u32>,
+    capacity: VolCell<u64>,
+    size_max: VolCell<u32>,
+    seg_max: VolCell<u32>,
     geometry: BlkGeometry,
-    blk_size: Volatile<u32>,
+    blk_size: VolCell<u32>,
     topology: BlkTopology,
-    writeback: Volatile<u8>,
+    writeback: VolCell<u8>,
     _reserved_0: [u8; 3],
-    max_discard_sectors: Volatile<u32>,
-    max_discard_seg: Volatile<u32>,
-    discard_sector_alignment: Volatile<u32>,
-    max_write_zeroes_sectors: Volatile<u32>,
-    max_write_zeroes_seg: Volatile<u32>,
-    write_zeroes_may_unmap: Volatile<u8>,
+    max_discard_sectors: VolCell<u32>,
+    max_discard_seg: VolCell<u32>,
+    discard_sector_alignment: VolCell<u32>,
+    max_write_zeroes_sectors: VolCell<u32>,
+    max_write_zeroes_seg: VolCell<u32>,
+    write_zeroes_may_unmap: VolCell<u8>,
     _reserved_1: [u8; 3],
 }

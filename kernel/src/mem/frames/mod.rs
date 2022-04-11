@@ -1,42 +1,42 @@
 mod buddy;
 
-mod errors;
-pub use self::errors::*;
-mod line_box;
-pub use self::line_box::*;
-mod phys_box;
-pub use self::phys_box::*;
-mod points_box;
-pub use self::points_box::*;
-
 use crate::prelude::*;
+use base::cell::SingletonCell;
 use buddy::Buddy;
-use common::basic::Singleton;
+use core::alloc::Layout;
 use spin::Mutex;
 
-struct Frames {
+#[derive(Debug)]
+pub enum FramesAllocError {
+    UndersizeAlign,
+    OutOfMemory,
+}
+
+partially!(buddy::BuddyError, FramesAllocError; OutOfBounds => OutOfMemory);
+
+struct Mod {
     buddy: Mutex<Buddy<'static>>,
 }
 
-static FRAMES: Singleton<Frames> = Singleton::new();
+static MOD: SingletonCell<Mod> = SingletonCell::new();
 
 pub unsafe fn init_global() {
-    use arch::memory::CONFIG;
-    let segment = by_points(CONFIG.start(), CONFIG.start() + CONFIG.size()).unwrap();
-    let buffer_size = CONFIG.size() / 4096 * 2;
-    let buffer_paddr = CONFIG.bump_alloc(buffer_size);
+    let memory = rt::mem::memory();
+    let segment = by_points(memory.start, memory.end).unwrap();
+    let buffer_size = (memory.end - memory.start) / 4096 * 2;
+    let buffer_paddr = memory.use_buffer.start();
     let buffer_slice =
         core::slice::from_raw_parts_mut(buffer_paddr.to_usize() as *mut i8, buffer_size);
     let buddy_start = segment.start().to_usize().div_ceil(4096);
     let buddy_end = segment.end().map(|x| x.to_usize() >> 12);
     let buddy_segment = Segment::new(buddy_start, buddy_end).unwrap();
     let buddy = Buddy::new(buddy_segment, buffer_slice).unwrap();
-    let allocator = Frames {
+    let allocator = Mod {
         buddy: Mutex::new(buddy),
     };
-    let reserve_size = CONFIG.bump_ptr() - CONFIG.start();
-    FRAMES.init(allocator);
-    set(by_size(CONFIG.start(), reserve_size).unwrap(), true);
+    let reserve_size = memory.ptr - memory.start;
+    MOD.initialize(allocator);
+    set(by_size(memory.start, reserve_size).unwrap(), true);
 }
 
 // todo: non-continuous alloc
@@ -48,7 +48,7 @@ pub fn alloc(layout: MapLayout) -> Result<PAddr, FramesAllocError> {
     if layout.align() < 4096 {
         return Err(UndersizeAlign);
     }
-    let mut buddy = FRAMES.buddy.lock();
+    let mut buddy = MOD.buddy.lock();
     let paddr = buddy.alloc(layout.size() >> 12).out::<FramesAllocError>()?;
     Ok(PAddr::new(paddr << 12))
 }
@@ -60,7 +60,7 @@ pub unsafe fn dealloc(paddr: PAddr, layout: MapLayout) {
     }
     assert!(layout.align() >= 4096);
     assert!(layout.check(paddr.to_usize()));
-    let mut buddy = FRAMES.buddy.lock();
+    let mut buddy = MOD.buddy.lock();
     let addr = paddr.to_usize() >> 12;
     let size = layout.size() >> 12;
     buddy.dealloc(addr, size).unwrap();
@@ -70,8 +70,55 @@ unsafe fn set(segment: Segment<PAddr>, val: bool) {
     assert!(!segment.is_empty());
     assert!(segment.start().to_usize() % 4096 == 0);
     assert!(segment.wrapping_end().to_usize() % 4096 == 0);
-    let mut buddy = FRAMES.buddy.lock();
+    let mut buddy = MOD.buddy.lock();
     let start = segment.start().to_usize() >> 12;
     let end = segment.end().map(|x| x.to_usize() >> 12);
     buddy.set(Segment::new(start, end).unwrap(), val).unwrap();
+}
+
+pub struct FramesBox<T>(*mut T);
+
+unsafe impl<T: Send> Send for FramesBox<T> {}
+unsafe impl<T: Sync> Sync for FramesBox<T> {}
+
+impl<T> FramesBox<T> {
+    pub fn new(x: T) -> Result<Self, FramesAllocError> {
+        let layout = Layout::new::<T>().pad_to_align();
+        let layout = MapLayout::new(layout.size(), layout.align()).unwrap();
+        let paddr = alloc(layout)?;
+        unsafe {
+            (paddr.to_usize() as *mut T).write_volatile(x);
+        }
+        Ok(FramesBox(paddr.to_usize() as *mut T))
+    }
+}
+
+impl<T> FramesBox<T> {
+    pub fn paddr(&self) -> PAddr {
+        PAddr::new(self.0 as usize)
+    }
+    pub fn into_raw(self) -> PAddr {
+        let raw = self.0 as usize;
+        core::mem::forget(self);
+        PAddr::new(raw)
+    }
+    pub const unsafe fn from_raw(addr: PAddr) -> FramesBox<T> {
+        Self(addr.to_usize() as *mut T)
+    }
+    pub fn get(&self) -> *mut T {
+        self.0
+    }
+    pub fn layout(&self) -> MapLayout {
+        let layout = Layout::new::<T>().pad_to_align();
+        MapLayout::new(layout.size(), layout.align()).unwrap()
+    }
+}
+
+impl<T> Drop for FramesBox<T> {
+    fn drop(&mut self) {
+        unsafe {
+            core::ptr::drop_in_place(self.get());
+            dealloc(self.paddr(), self.layout());
+        }
+    }
 }

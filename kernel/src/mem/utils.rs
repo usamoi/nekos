@@ -1,8 +1,10 @@
 use crate::prelude::*;
 use arrayvec::ArrayVec;
-use common::inherit::UintExt;
 
 pub fn integer_partition(r: Segment<usize>) -> ArrayVec<(usize, u8), { usize::BITS as usize * 2 }> {
+    fn lowbit(x: usize) -> usize {
+        x & x.wrapping_neg()
+    }
     let mut ans = ArrayVec::new();
     if r.is_empty() {
         return ans;
@@ -16,19 +18,19 @@ pub fn integer_partition(r: Segment<usize>) -> ArrayVec<(usize, u8), { usize::BI
     let end = r.wrapping_end();
     let mut start = r.start();
     if start == 0 {
-        let height = end.lowbit().log2() as u8;
+        let height = lowbit(end).log2() as u8;
         ans.push((start, height));
         start = start.wrapping_add(1usize << height);
     }
     while start != end {
-        let guess = start.wrapping_add(start.lowbit());
+        let guess = start.wrapping_add(lowbit(start));
         if end != 0 && (guess == 0 || guess > end) {
             break;
         }
-        ans.push((start, start.lowbit().log2() as u8));
-        start = start.wrapping_add(start.lowbit());
+        ans.push((start, lowbit(start).log2() as u8));
+        start = start.wrapping_add(lowbit(start));
     }
-    let mut pow = start.lowbit() >> 1;
+    let mut pow = lowbit(start) >> 1;
     while pow != 0 {
         if end & pow != 0 {
             ans.push((start, pow.log2() as u8));

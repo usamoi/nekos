@@ -2,7 +2,6 @@ use crate::prelude::*;
 use core::any::Any;
 use core::cmp::Ordering;
 use core::marker::PhantomData;
-use core::num::NonZeroU32;
 
 pub type HandleID = usize;
 
@@ -96,27 +95,28 @@ pub trait Codomain: Sized {
 }
 
 #[must_use]
-pub struct Errno(NonZeroU32);
+pub struct Errno(u32);
 
 impl Errno {
-    pub const fn new<const CODE: NonZeroU32>() -> Self
+    pub const fn new<const CODE: u32>() -> Self
     where
         Errno: Errnos<{ CODE }>,
     {
         Self(CODE)
     }
-    pub const fn into_raw(&self) -> NonZeroU32 {
+    pub const fn into_raw(&self) -> u32 {
         self.0
     }
 }
 
-pub trait Errnos<const CODE: NonZeroU32> {}
+pub trait Errnos<const CODE: u32> {}
 
 pub macro impl_errno($name:ident, $code:literal) {
     impl Errno {
-        pub const $name: Errno = Errno::new::<{ ::core::num::NonZeroU32::new($code).unwrap() }>();
+        pub const $name: Errno = Errno::new::<{ $code }>();
     }
-    impl Errnos<{ ::core::num::NonZeroU32::new($code).unwrap() }> for Errno {}
+    impl Errnos<{ $code }> for Errno {}
+    static_assertions::const_assert_ne!($code, 0);
 }
 
 impl_errno!(GENERAL_INTERNAL, 0xa9244d1cu32);

@@ -1,18 +1,18 @@
 use crate::prelude::*;
-use arch::paging::PageTable;
 use core::mem::MaybeUninit;
 use mem::pages::Pages;
-use mem::vmm::TEMPLATE;
+use mem::vmm::GROUP;
 use proc::vmm::{Area, AreaReadError, AreaWriteError};
+use rt::paging::Paging;
 
 pub struct UserSpace {
     pub root: Arc<Area>,
-    pub page_table: Arc<PageTable>,
+    pub page_table: Arc<<P as Platform>::Paging>,
 }
 
 impl UserSpace {
     pub fn new() -> Arc<UserSpace> {
-        let page_table = Arc::new(PageTable::new(&TEMPLATE));
+        let page_table = Arc::new(<P as Platform>::Paging::new(&GROUP));
         let segment = by_points(
             VAddr::new(0x0000000000000000),
             VAddr::new(0x0000004000000000),
@@ -62,8 +62,8 @@ impl UserSpace {
 }
 
 impl Environment {
-    pub async fn handle_page_fault(&self, _addr: VAddr, kind: MemoryOperation) -> EffKill<()> {
-        self.process_fault(ProcessFault::Segment { op: kind })
+    pub async fn handle_page_fault(&self, _addr: VAddr, access: Access) -> EffKill<()> {
+        self.process_fault(ProcessFault::Segment { access })
             .await
             .map(|x| x)
     }

@@ -7,8 +7,8 @@ use proc::thread::Thread;
 #[derive(Debug)]
 pub enum Exception {
     IllegalInstruction,
-    Misaligned { op: MemoryOperation },
-    PageFault { op: MemoryOperation, addr: VAddr },
+    Misaligned { access: Access, addr: VAddr },
+    PageFault { access: Access, addr: VAddr },
     Syscall { id: usize, args: Arguments },
     Breakpoint,
 }
@@ -30,8 +30,8 @@ pub enum Trap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessFault {
     IllegalInstruction,
-    Misaligned { op: MemoryOperation },
-    Segment { op: MemoryOperation },
+    Misaligned { access: Access },
+    Segment { access: Access },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

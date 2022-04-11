@@ -150,16 +150,14 @@ impl<'a> Buddy<'a> {
         if size == 0 {
             return Err(ZeroSize);
         }
-        let addr = 'outer: {
-            let h = size.checked_next_power_of_two().ok_or(OutOfBounds)?;
-            for (xaddr, xnodes) in self.list.iter() {
-                if let Some(xpos) = dfs_find(xnodes, h.log2() as u8) {
-                    break 'outer *xaddr + xpos;
-                }
+        let h = size.checked_next_power_of_two().ok_or(OutOfBounds)?;
+        for (xaddr, xnodes) in self.list.iter() {
+            if let Some(xpos) = dfs_find(xnodes, h.log2() as u8) {
+                let addr = *xaddr + xpos;
+                return Ok(addr);
             }
-            return Err(OutOfBounds);
-        };
-        Ok(addr)
+        }
+        Err(OutOfBounds)
     }
     #[allow(dead_code)]
     pub fn get(&mut self, segment: Segment<usize>) -> Result<Option<bool>, BuddyError> {

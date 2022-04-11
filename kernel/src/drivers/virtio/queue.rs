@@ -1,12 +1,11 @@
 use super::mmio::MMIO;
 use crate::prelude::*;
+use base::cell::{VolCell, VolRCell};
 use core::alloc::Allocator;
 use core::ptr::Pointee;
 use core::sync::atomic::fence;
 use core::sync::atomic::Ordering;
 use mem::dma::{DmaAllocator, DmaBox};
-use volatile::ReadOnly;
-use volatile::ReadWrite;
 
 // todo: endian
 
@@ -21,7 +20,7 @@ pub enum VirtQueueError {
 pub struct VirtQueue {
     index: u32,
     size: u16,
-    desc: DmaBox<[ReadWrite<Desc>]>,
+    desc: DmaBox<[VolCell<Desc>]>,
     avail: DmaBox<Avail>,
     used: DmaBox<Used>,
     desc_free: Vec<u16>,
@@ -43,7 +42,7 @@ impl VirtQueue {
         if mmio.queue_max_size() as u16 == 0 || !size.is_power_of_two() {
             return Err(NotAvailable);
         }
-        let desc: DmaBox<[ReadWrite<Desc>]> = unsafe { new_zeroed_unsize(size as usize) };
+        let desc: DmaBox<[VolCell<Desc>]> = unsafe { new_zeroed_unsize(size as usize) };
         let mut avail: DmaBox<Avail> = unsafe { new_zeroed_unsize(size as usize) };
         let mut used: DmaBox<Used> = unsafe { new_zeroed_unsize(size as usize) };
         mmio.queue_init(
@@ -89,16 +88,6 @@ impl VirtQueue {
                 flags: flag_next,
                 next: slots.get(p + 1).cloned().unwrap_or(0),
             });
-            dbg!(
-                p,
-                slots[p],
-                Desc {
-                    addr: paddr.to_usize() as u64,
-                    len: size as u32,
-                    flags: flag_next,
-                    next: slots.get(p + 1).cloned().unwrap_or(0),
-                }
-            );
             p += 1;
         }
         for RawDmaMut(paddr, size) in muts.iter().cloned() {
@@ -111,16 +100,6 @@ impl VirtQueue {
                 flags: flag_next | Desc::FLAGS_WRITE,
                 next: slots.get(p + 1).cloned().unwrap_or(0),
             });
-            dbg!(
-                p,
-                slots[p],
-                Desc {
-                    addr: paddr.to_usize() as u64,
-                    len: size as u32,
-                    flags: flag_next | Desc::FLAGS_WRITE,
-                    next: slots.get(p + 1).cloned().unwrap_or(0),
-                }
-            );
             p += 1;
         }
         self.avail.push(slots[0]);
@@ -160,9 +139,9 @@ impl Desc {
 #[repr(C, align(2))]
 #[derive(Debug)]
 pub struct Avail {
-    pub flags: ReadWrite<u16>,
-    pub idx: ReadWrite<u16>,
-    pub ring: [ReadWrite<u16>],
+    pub flags: VolCell<u16>,
+    pub idx: VolCell<u16>,
+    pub ring: [VolCell<u16>],
 }
 
 impl Avail {
@@ -177,9 +156,9 @@ impl Avail {
 #[repr(C, align(4))]
 #[derive(Debug)]
 pub struct Used {
-    pub flags: ReadWrite<u16>,
-    pub idx: ReadOnly<u16>,
-    pub ring: [ReadOnly<(u16, u16, u32)>],
+    pub flags: VolCell<u16>,
+    pub idx: VolRCell<u16>,
+    pub ring: [VolRCell<(u16, u16, u32)>],
 }
 
 impl Used {

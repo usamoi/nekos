@@ -71,7 +71,7 @@ impl Syscalls<{ Syscall::AREA_MAP }> for Syscall {
     type Domain0 = Handle<Area>;
     type Domain1 = Handle<Memory>;
     type Domain2 = VAddr;
-    type Domain3 = MapPermission;
+    type Domain3 = Permission;
     async fn syscall(
         _: &Environment,
         (area, memory, addr, permission, ..): syscall_domain!(),
@@ -100,7 +100,7 @@ impl_errno!(AREA_FIND_MAP_PERMISSION_NOT_SUPPORTED, 0x4dd6df50u32);
 impl Syscalls<{ Syscall::AREA_FIND_MAP }> for Syscall {
     type Domain0 = Handle<Area>;
     type Domain1 = Handle<Memory>;
-    type Domain2 = MapPermission;
+    type Domain2 = Permission;
     async fn syscall(
         _: &Environment,
         (area, memory, permission, ..): syscall_domain!(),

@@ -1,32 +1,35 @@
 use crate::prelude::*;
-use arch::cpu::checked_local;
-use arch::power::POWER;
-use arch::stdout::STDOUT;
-use arch::time::MachineInstant;
-use arch::trampoline::fault;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use owo_colors::OwoColorize;
+use rt::backtrace::backtrace;
+use rt::thread::current;
+use rt::time::Instant;
+use spin::Once;
+
+static HOOK: Once<fn()> = Once::new();
+
+pub fn hook_set_hook(f: fn()) {
+    HOOK.call_once(|| f);
+}
 
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
-    unsafe {
-        fault::panic_handler();
+    if let Some(f) = HOOK.get().cloned() {
+        f();
     }
 
-    let s = &mut *STDOUT.write.lock();
+    let mut s = rt::io::stdout().lock();
     writeln!(s).unwrap();
 
     write!(s, "{}", "Panic".red()).unwrap();
-    if let Some(ms) = MachineInstant::now()
-        .checked_duration_since(MachineInstant::ZERO)
+    if let Some(ms) = Instant::now()
+        .maybe_duration_since(Instant::ZERO)
         .map(|x| x.as_millis())
     {
         write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();
     }
-    if let Some(id) = checked_local().and_then(|local| local.get_id()) {
-        write!(s, " [CPU {}]", id).unwrap();
-    }
+    write!(s, " [CPU {}]", current().id()).unwrap();
     if let Some(location) = info.location() {
         let file = location.file();
         let line = location.line();
@@ -35,9 +38,9 @@ fn panic_handler(info: &PanicInfo) -> ! {
     writeln!(s, " {}", info.message().unwrap()).unwrap();
 
     writeln!(s, "[Backtrace]").unwrap();
-    for stack_frame in common::backtrace::backtrace!() {
+    for stack_frame in unsafe { backtrace() } {
         writeln!(s, "{{ {:?} }}", stack_frame).unwrap();
     }
 
-    POWER.shutdown();
+    rt::process::abort();
 }

@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
+use base::cell::SingletonCell;
 use futures::task::ArcWake;
 use proc::process::Process;
 use spin::{Lazy, Mutex};
@@ -50,29 +51,33 @@ impl Scheduler {
     }
 }
 
-pub(in crate::sched) static SCHEDULER: Singleton<Scheduler> = Singleton::new();
+pub(in crate::sched) static SCHEDULER: SingletonCell<Scheduler> = SingletonCell::new();
 
 pub fn spawn(future: Arc<dyn PreemptiveFuture>, priority: Priority) -> Arc<Task> {
     let mut queue = SCHEDULER.queue.lock();
     // todo: fix the bad behavior if all threads are blocked
-    let vruntime = queue.vruntime().unwrap_or(Vruntime::new(0));
+    let vruntime = queue.vruntime().unwrap_or_else(|| Vruntime::new(0));
     let task = Task::new(future, vruntime, priority);
     queue.insert(task.clone());
     task
 }
 
 pub unsafe fn init_global() {
-    SCHEDULER.init(Scheduler {
+    SCHEDULER.initialize(Scheduler {
         queue: Mutex::new(SchedulerQueue::new()),
     });
 }
 
 static INITPROC: Lazy<Arc<Process>> =
-    Lazy::new(|| Process::create(config::PROCESS_INITPROC).expect("initproc created failed"));
+    Lazy::new(|| Process::create("initproc").expect("initproc created failed"));
+
+pub fn initproc() -> &'static Arc<Process> {
+    &INITPROC
+}
 
 pub fn forever() -> ! {
     loop {
-        if INITPROC.is_dead() {
+        if initproc().is_dead() {
             panic!("initproc exited unexpectedly",);
         }
         if let Some(task) = SCHEDULER.pop() {

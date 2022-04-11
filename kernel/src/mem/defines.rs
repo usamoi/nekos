@@ -1,7 +1,6 @@
 use crate::prelude::*;
 use core::alloc::Layout;
 use core::fmt::{Debug, Formatter, Pointer};
-use core::marker::PhantomData;
 use core::ops::{Add, Sub};
 
 // linker symbol
@@ -44,41 +43,7 @@ impl Debug for LinkerSymbol {
     }
 }
 
-// compile-time size and align checking
-
-pub struct SizeId<const SIZE: usize, T: Sized>(PhantomData<T>);
-
-pub trait Size<const SIZE: usize>: Sized {
-    const EQUALS: SizeId<SIZE, Self>;
-}
-
-impl<T> const Size<{ core::mem::size_of::<T>() }> for T {
-    const EQUALS: SizeId<{ core::mem::size_of::<T>() }, Self> = SizeId(PhantomData);
-}
-
-pub struct AlignId<const ALIGN: usize, T: Sized>(PhantomData<T>);
-
-pub trait Align<const ALIGN: usize>: Sized {
-    const EQUALS: AlignId<ALIGN, Self>;
-}
-
-impl<T> const Align<{ core::mem::align_of::<T>() }> for T {
-    const EQUALS: AlignId<{ core::mem::align_of::<T>() }, Self> = AlignId(PhantomData);
-}
-
 // address
-
-pub trait Addr: Copy + Ord {
-    const ZERO: Self;
-    fn to_usize(self) -> usize;
-}
-
-impl const Addr for usize {
-    const ZERO: Self = 0;
-    fn to_usize(self) -> usize {
-        self
-    }
-}
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
@@ -89,6 +54,9 @@ impl PAddr {
     pub const NULL: Self = PAddr::new(0);
     pub const fn new(x: usize) -> Self {
         Self(x)
+    }
+    pub const fn to_usize(self) -> usize {
+        self.0
     }
     pub const fn to_const(self) -> *const u8 {
         self.0 as *const _
@@ -101,20 +69,13 @@ impl PAddr {
     }
 }
 
-impl const Addr for PAddr {
-    const ZERO: Self = Self(0);
-    fn to_usize(self) -> usize {
-        self.into()
-    }
-}
-
-impl const From<PAddr> for usize {
+impl From<PAddr> for usize {
     fn from(x: PAddr) -> usize {
         x.0
     }
 }
 
-impl const From<usize> for PAddr {
+impl From<usize> for PAddr {
     fn from(x: usize) -> PAddr {
         PAddr(x)
     }
@@ -128,7 +89,7 @@ impl const Add<usize> for PAddr {
     }
 }
 
-impl const Sub<usize> for PAddr {
+impl Sub<usize> for PAddr {
     type Output = Self;
 
     fn sub(self, rhs: usize) -> Self::Output {
@@ -136,7 +97,7 @@ impl const Sub<usize> for PAddr {
     }
 }
 
-impl const Sub<Self> for PAddr {
+impl Sub<Self> for PAddr {
     type Output = usize;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -152,36 +113,6 @@ impl Debug for PAddr {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
-#[pointer(fmt = "{:#p}", _0)]
-pub struct PAddrAligned<const X: u8>(PAddr);
-
-impl<const X: u8> PAddrAligned<X> {
-    pub const fn new(x: PAddr) -> Option<Self> {
-        if x.to_usize() & ((1usize << X) - 1) == 0 {
-            Some(Self(x))
-        } else {
-            None
-        }
-    }
-    pub const fn into(self) -> PAddr {
-        self.0
-    }
-    pub const fn to_const<T: Align<{ 1usize << X }>>(self) -> *const T {
-        self.0.to_const() as *const T
-    }
-    pub const fn to_mut<T: Align<{ 1usize << X }>>(self) -> *mut T {
-        self.0.to_const() as *mut T
-    }
-}
-
-impl<const X: u8> Debug for PAddrAligned<X> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Pointer::fmt(self, f)
-    }
-}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
 #[pointer(fmt = "{:#x}", _0)]
 pub struct VAddr(usize);
 
@@ -189,25 +120,18 @@ impl VAddr {
     pub const fn new(x: usize) -> Self {
         Self(x)
     }
-    pub const fn align_to(self, x: usize) -> Self {
-        Self(self.0.next_multiple_of(x))
-    }
-}
-
-impl const Addr for VAddr {
-    const ZERO: Self = Self(0);
-    fn to_usize(self) -> usize {
+    pub const fn to_usize(self) -> usize {
         self.into()
     }
 }
 
-impl const From<VAddr> for usize {
+impl From<VAddr> for usize {
     fn from(x: VAddr) -> usize {
         x.0
     }
 }
 
-impl const From<usize> for VAddr {
+impl From<usize> for VAddr {
     fn from(x: usize) -> VAddr {
         VAddr(x)
     }
@@ -221,7 +145,7 @@ impl const Add<usize> for VAddr {
     }
 }
 
-impl const Sub<usize> for VAddr {
+impl Sub<usize> for VAddr {
     type Output = Self;
 
     fn sub(self, rhs: usize) -> Self::Output {
@@ -229,7 +153,7 @@ impl const Sub<usize> for VAddr {
     }
 }
 
-impl const Sub<Self> for VAddr {
+impl Sub<Self> for VAddr {
     type Output = usize;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -399,7 +323,7 @@ pub const fn by_points<T: ~const InSegment>(start: T, end: T) -> Option<Segment<
 // memory
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryOperation {
+pub enum Access {
     Instruction,
     Load,
     Store,
@@ -432,20 +356,20 @@ impl MapLayout {
         let check_size = addr.wrapping_add(self.size) == 0 || addr.checked_add(self.size).is_some();
         check_align && check_size
     }
-    pub const fn from_alloc_layout(layout: Layout) -> Self {
+    pub const fn from_rust(layout: Layout) -> Self {
         let size = layout.size().next_multiple_of(layout.align());
         Self::new(size, layout.align()).unwrap()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MapPermission {
+pub struct Permission {
     pub read: bool,
     pub write: bool,
     pub execute: bool,
 }
 
-impl MapPermission {
+impl Permission {
     pub const RO: Self = Self::new(true, false, false);
     pub const RW: Self = Self::new(true, true, false);
     pub const EO: Self = Self::new(false, false, true);
@@ -458,8 +382,8 @@ impl MapPermission {
     }
 }
 
-impl const From<MapPermission> for u8 {
-    fn from(x: MapPermission) -> u8 {
+impl const From<Permission> for u8 {
+    fn from(x: Permission) -> u8 {
         x.read as u8 | (x.write as u8) << 1 | (x.execute as u8) << 2
     }
 }
@@ -474,7 +398,7 @@ pub trait Map {
     }
 }
 
-pub trait RandomRead: Map {
+pub trait MapRead: Map {
     unsafe fn read_unchecked(&self, offset: usize, buffer: &mut [u8]);
 
     fn read(&self, offset: usize, buffer: &mut [u8]) {
@@ -489,7 +413,7 @@ pub trait RandomRead: Map {
     }
 }
 
-pub trait RandomWrite: Map {
+pub trait MapWrite: Map {
     unsafe fn write_unchecked(&self, offset: usize, buffer: &[u8]);
 
     fn write(&self, offset: usize, buffer: &[u8]) {

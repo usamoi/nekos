@@ -52,7 +52,7 @@ impl_syscall!(THREAD_YIELD, 0x40caac6bu32);
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::THREAD_YIELD }> for Syscall {
     async fn syscall(_: &Environment, (..): syscall_domain!()) -> EffSys<Self::Codomain> {
-        yield_now().await;
+        base::future::yield_now().await;
         Ok(())
     }
 }

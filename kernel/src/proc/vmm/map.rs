@@ -1,3 +1,3 @@
 use crate::prelude::*;
 
-pub trait MapProc: Send + Sync + Map + RandomRead + RandomWrite + MapIndex {}
+pub trait MapUser: Send + Sync + Map + MapRead + MapWrite + MapIndex {}

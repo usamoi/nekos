@@ -28,7 +28,6 @@ impl Environment {
             Syscall::DEBUG_WRITE => solve::<{ Syscall::DEBUG_WRITE }>(self, args).await,
             Syscall::THREAD_EXIT => solve::<{ Syscall::THREAD_EXIT }>(self, args).await,
             Syscall::HANDLE_DROP => solve::<{ Syscall::HANDLE_DROP }>(self, args).await,
-            Syscall::PROCESS_CREATE => solve::<{ Syscall::PROCESS_CREATE }>(self, args).await,
             Syscall::PROCESS_KILL => solve::<{ Syscall::PROCESS_KILL }>(self, args).await,
             Syscall::THREAD_CREATE => solve::<{ Syscall::THREAD_CREATE }>(self, args).await,
             Syscall::THREAD_KILL => solve::<{ Syscall::THREAD_KILL }>(self, args).await,
