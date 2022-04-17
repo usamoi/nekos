@@ -81,7 +81,7 @@ pub fn load(name: &str) -> Result<Image, LoadError> {
     ensure!(ident.version() == Version::One, BadPlatform);
     ensure!(ident.os_abi() == 0, BadAbi);
     ensure!(ident.abi_version() == 0, BadAbi);
-    ensure!(header.machine() == P::ELF_EABI, BadPlatform);
+    ensure!(header.machine() == P::ABI_ELF_ABI, BadPlatform);
     ensure!(header.typa() == ElfType::Exec, BadAbi);
     let programs = Programs::parse(elf)?.ok_or(BadElf)?;
     for index in 0..programs.num() {

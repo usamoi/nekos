@@ -2,10 +2,13 @@ use super::mmio::MMIO;
 use crate::prelude::*;
 use base::cell::{VolCell, VolRCell};
 use core::alloc::Allocator;
+use core::alloc::Layout;
 use core::ptr::Pointee;
 use core::sync::atomic::fence;
 use core::sync::atomic::Ordering;
-use mem::dma::{DmaAllocator, DmaBox};
+use mem::dma::DmaAllocator;
+
+type DmaBox<T> = Box<T, DmaAllocator>;
 
 // todo: endian
 
@@ -29,7 +32,7 @@ pub struct VirtQueue {
 
 unsafe fn new_zeroed_unsize<T: ?Sized>(metadata: <T as Pointee>::Metadata) -> DmaBox<T> {
     let nullptr = core::ptr::from_raw_parts::<T>(core::ptr::null(), metadata);
-    let layout = core::alloc::Layout::for_value_raw(nullptr);
+    let layout = Layout::for_value(&*nullptr);
     let nonnull = DmaAllocator.allocate_zeroed(layout).unwrap();
     let thin = nonnull.as_ptr() as *mut ();
     Box::from_raw_in(core::ptr::from_raw_parts_mut(thin, metadata), DmaAllocator)
@@ -80,7 +83,7 @@ impl VirtQueue {
         let mut p = 0;
         for RawDmaRef(paddr, size) in refs.iter().cloned() {
             let flag_next = (p != count - 1)
-                .then_some(Desc::FLAGS_NEXT)
+                .then(|| Desc::FLAGS_NEXT)
                 .unwrap_or_default();
             self.desc[slots[p] as usize].write(Desc {
                 addr: paddr.to_usize() as u64,
@@ -92,7 +95,7 @@ impl VirtQueue {
         }
         for RawDmaMut(paddr, size) in muts.iter().cloned() {
             let flag_next = (p != count - 1)
-                .then_some(Desc::FLAGS_NEXT)
+                .then(|| Desc::FLAGS_NEXT)
                 .unwrap_or_default();
             self.desc[slots[p] as usize].write(Desc {
                 addr: paddr.to_usize() as u64,

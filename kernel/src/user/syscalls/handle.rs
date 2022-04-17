@@ -1,20 +1,29 @@
 use crate::prelude::*;
 
 impl_syscall!(HANDLE_DROP, 0x9c9113fau32);
-impl_errno!(HANDLE_DROP_NOT_FOUND, 0xfd3b5c6du32);
+
+#[repr(u8)]
+pub enum HandleDropError {
+    NotFound,
+}
+
+impl SyscallError for HandleDropError {
+    fn into_u8(self) -> u8 {
+        self as u8
+    }
+}
 
 #[async_trait::async_trait]
 impl Syscalls<{ Syscall::HANDLE_DROP }> for Syscall {
     type Domain0 = HandleID;
-    async fn syscall(
-        env: &Environment,
-        (handle_id, ..): (HandleID, (), (), (), (), ()),
-    ) -> EffSys<Self::Codomain> {
+    type Error = HandleDropError;
+    async fn syscall(env: &Environment, (handle_id, ..): domain!()) -> codomain!() {
+        use HandleDropError::*;
         let r = env.process.handle_set.remove(handle_id);
         if r.is_some() {
-            Err(Errno::HANDLE_DROP_NOT_FOUND.into())
+            Flow::Err(NotFound.into())
         } else {
-            Ok(())
+            Flow::Ok(())
         }
     }
 }

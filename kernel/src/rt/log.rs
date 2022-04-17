@@ -9,7 +9,7 @@ pub struct Logger;
 
 impl Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= config::LOGGING_LEVEL
+        metadata.level() <= config::logging_level()
     }
 
     fn log(&self, record: &Record) {
@@ -25,8 +25,8 @@ impl Log for Logger {
             Debug => write!(s, "{}", "Debug".blue()).unwrap(),
             Trace => write!(s, "{}", "Trace".cyan()).unwrap(),
         }
-        if let Some(ms) = Instant::now()
-            .maybe_duration_since(Instant::ZERO)
+        if let Some(ms) = Instant::maybe_now()
+            .map(|x| x - Instant::ZERO)
             .map(|x| x.as_millis())
         {
             write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();
@@ -43,7 +43,7 @@ pub fn logger() -> &'static Logger {
     &LOGGER
 }
 
-pub unsafe fn init_global() {
+pub fn init_global() {
     log::set_logger(logger()).unwrap();
     log::set_max_level(LevelFilter::Trace);
 }

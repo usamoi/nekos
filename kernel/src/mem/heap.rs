@@ -3,14 +3,13 @@ use core::alloc::AllocError;
 use core::alloc::{Allocator, Layout};
 use core::ptr::NonNull;
 use crossbeam::atomic::AtomicCell;
-use mem::vmm::SPACE;
+use mem::vmm::VMM;
 use rt::paging::Paging;
 use spin::Mutex;
 
 fn def_map(ptr: usize) {
     let layout = MapLayout::new(4096, 4096).unwrap();
-    SPACE
-        .page_table
+    VMM.page_table
         .map(
             VAddr::new(ptr),
             mem::frames::alloc(layout).unwrap(),
@@ -20,13 +19,17 @@ fn def_map(ptr: usize) {
             false,
         )
         .unwrap();
+    unsafe {
+        core::arch::riscv64::sfence_vma(ptr, 0);
+    }
 }
 
 fn def_unmap(ptr: usize) {
     let layout = MapLayout::new(4096, 4096).unwrap();
-    let paddr = SPACE.page_table.unmap(VAddr::new(ptr), 4096).unwrap();
+    let paddr = VMM.page_table.unmap(VAddr::new(ptr), 4096).unwrap();
     unsafe {
         mem::frames::dealloc(paddr, layout);
+        core::arch::riscv64::sfence_vma(ptr, 0);
     }
 }
 
@@ -151,7 +154,7 @@ static OKAY: AtomicCell<bool> = AtomicCell::new(false);
 
 pub fn init_global() {
     OKAY.compare_exchange(false, true).unwrap();
-    let mut addr = SPACE.heap_segment().start().to_usize();
+    let mut addr = VMM.heap_segment.start().to_usize();
     L1.lock().init(&mut addr);
     L2.lock().init(&mut addr);
     L3.lock().init(&mut addr);
@@ -175,7 +178,7 @@ pub fn init_global() {
     BD.lock().init(&mut addr);
     BE.lock().init(&mut addr);
     BF.lock().init(&mut addr);
-    if addr > SPACE.heap_segment().end().unwrap().to_usize() {
+    if addr > VMM.heap_segment.end().unwrap().to_usize() {
         panic!();
     }
 }
@@ -183,6 +186,7 @@ pub fn init_global() {
 pub struct DefaultAllocator;
 
 unsafe impl Allocator for DefaultAllocator {
+    #[allow(clippy::match_overlapping_arm)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         if !OKAY.load() {
             return Err(AllocError);
@@ -193,35 +197,36 @@ unsafe impl Allocator for DefaultAllocator {
         }
         let data_address = match layout.size() {
             0 => NonNull::new(layout.align() as *mut ()).map(|x| x.cast()),
-            0..=32 => L1.lock().alloc(),
-            0..=64 => L2.lock().alloc(),
-            0..=128 => L3.lock().alloc(),
-            0..=256 => L4.lock().alloc(),
-            0..=512 => L5.lock().alloc(),
-            0..=1024 => L6.lock().alloc(),
-            0..=2048 => L7.lock().alloc(),
-            0..=0x1000 => B0.lock().alloc(),
-            0..=0x2000 => B1.lock().alloc(),
-            0..=0x4000 => B2.lock().alloc(),
-            0..=0x8000 => B3.lock().alloc(),
-            0..=0x10000 => B4.lock().alloc(),
-            0..=0x20000 => B5.lock().alloc(),
-            0..=0x40000 => B6.lock().alloc(),
-            0..=0x80000 => B7.lock().alloc(),
-            0..=0x100000 => B8.lock().alloc(),
-            0..=0x200000 => B9.lock().alloc(),
-            0..=0x400000 => BA.lock().alloc(),
-            0..=0x800000 => BB.lock().alloc(),
-            0..=0x1000000 => BC.lock().alloc(),
-            0..=0x2000000 => BD.lock().alloc(),
-            0..=0x4000000 => BE.lock().alloc(),
-            0..=0x8000000 => BF.lock().alloc(),
+            1..=32 => L1.lock().alloc(),
+            1..=64 => L2.lock().alloc(),
+            1..=128 => L3.lock().alloc(),
+            1..=256 => L4.lock().alloc(),
+            1..=512 => L5.lock().alloc(),
+            1..=1024 => L6.lock().alloc(),
+            1..=2048 => L7.lock().alloc(),
+            1..=0x1000 => B0.lock().alloc(),
+            1..=0x2000 => B1.lock().alloc(),
+            1..=0x4000 => B2.lock().alloc(),
+            1..=0x8000 => B3.lock().alloc(),
+            1..=0x10000 => B4.lock().alloc(),
+            1..=0x20000 => B5.lock().alloc(),
+            1..=0x40000 => B6.lock().alloc(),
+            1..=0x80000 => B7.lock().alloc(),
+            1..=0x100000 => B8.lock().alloc(),
+            1..=0x200000 => B9.lock().alloc(),
+            1..=0x400000 => BA.lock().alloc(),
+            1..=0x800000 => BB.lock().alloc(),
+            1..=0x1000000 => BC.lock().alloc(),
+            1..=0x2000000 => BD.lock().alloc(),
+            1..=0x4000000 => BE.lock().alloc(),
+            1..=0x8000000 => BF.lock().alloc(),
             _ => None,
         }
         .ok_or(AllocError)?;
         Ok(NonNull::from_raw_parts(data_address.cast(), layout.size()))
     }
 
+    #[allow(clippy::match_overlapping_arm)]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if !OKAY.load() {
             panic!();
@@ -230,29 +235,29 @@ unsafe impl Allocator for DefaultAllocator {
         assert!(layout.align() <= 65536);
         match layout.size() {
             0 => assert_eq!(ptr.as_ptr() as usize, layout.align()),
-            0..=32 => L1.lock().dealloc(ptr),
-            0..=64 => L2.lock().dealloc(ptr),
-            0..=128 => L3.lock().dealloc(ptr),
-            0..=256 => L4.lock().dealloc(ptr),
-            0..=512 => L5.lock().dealloc(ptr),
-            0..=1024 => L6.lock().dealloc(ptr),
-            0..=2048 => L7.lock().dealloc(ptr),
-            0..=0x1000 => B0.lock().dealloc(ptr),
-            0..=0x2000 => B1.lock().dealloc(ptr),
-            0..=0x4000 => B2.lock().dealloc(ptr),
-            0..=0x8000 => B3.lock().dealloc(ptr),
-            0..=0x10000 => B4.lock().dealloc(ptr),
-            0..=0x20000 => B5.lock().dealloc(ptr),
-            0..=0x40000 => B6.lock().dealloc(ptr),
-            0..=0x80000 => B7.lock().dealloc(ptr),
-            0..=0x100000 => B8.lock().dealloc(ptr),
-            0..=0x200000 => B9.lock().dealloc(ptr),
-            0..=0x400000 => BA.lock().dealloc(ptr),
-            0..=0x800000 => BB.lock().dealloc(ptr),
-            0..=0x1000000 => BC.lock().dealloc(ptr),
-            0..=0x2000000 => BD.lock().dealloc(ptr),
-            0..=0x4000000 => BE.lock().dealloc(ptr),
-            0..=0x8000000 => BF.lock().dealloc(ptr),
+            1..=32 => L1.lock().dealloc(ptr),
+            1..=64 => L2.lock().dealloc(ptr),
+            1..=128 => L3.lock().dealloc(ptr),
+            1..=256 => L4.lock().dealloc(ptr),
+            1..=512 => L5.lock().dealloc(ptr),
+            1..=1024 => L6.lock().dealloc(ptr),
+            1..=2048 => L7.lock().dealloc(ptr),
+            1..=0x1000 => B0.lock().dealloc(ptr),
+            1..=0x2000 => B1.lock().dealloc(ptr),
+            1..=0x4000 => B2.lock().dealloc(ptr),
+            1..=0x8000 => B3.lock().dealloc(ptr),
+            1..=0x10000 => B4.lock().dealloc(ptr),
+            1..=0x20000 => B5.lock().dealloc(ptr),
+            1..=0x40000 => B6.lock().dealloc(ptr),
+            1..=0x80000 => B7.lock().dealloc(ptr),
+            1..=0x100000 => B8.lock().dealloc(ptr),
+            1..=0x200000 => B9.lock().dealloc(ptr),
+            1..=0x400000 => BA.lock().dealloc(ptr),
+            1..=0x800000 => BB.lock().dealloc(ptr),
+            1..=0x1000000 => BC.lock().dealloc(ptr),
+            1..=0x2000000 => BD.lock().dealloc(ptr),
+            1..=0x4000000 => BE.lock().dealloc(ptr),
+            1..=0x8000000 => BF.lock().dealloc(ptr),
             _ => (),
         }
     }

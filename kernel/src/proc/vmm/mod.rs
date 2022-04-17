@@ -71,39 +71,3 @@ fully!(PagesAcquireError, AreaMapError; ZeroSize, OutOfRange, Overlapping);
 fully!(PagesFindError, AreaFindMapError; ZeroSize, OutOfVirtualMemory);
 fully!(PagesReleaseError, AreaUnmapError; NotFound);
 partially!(PagesAcquireError, AreaFindMapError; ZeroSize);
-
-impl From<AreaReadError> for SideEffect {
-    fn from(e: AreaReadError) -> Self {
-        use AreaReadError as E;
-        use ProcessFault::*;
-        match e {
-            E::OutOfRange => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Load,
-            })),
-            E::BadRead => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Load,
-            })),
-            E::PermissionDenied => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Load,
-            })),
-        }
-    }
-}
-
-impl From<AreaWriteError> for SideEffect {
-    fn from(e: AreaWriteError) -> Self {
-        use AreaWriteError as E;
-        use ProcessFault::*;
-        match e {
-            E::OutOfRange => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Store,
-            })),
-            E::BadWrite => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Store,
-            })),
-            E::PermissionDenied => SideEffect::KillProcess(ProcessDeath::Fault(Segment {
-                access: Access::Store,
-            })),
-        }
-    }
-}

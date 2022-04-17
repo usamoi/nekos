@@ -1,21 +1,21 @@
 use crate::prelude::*;
+use base::cell::SingletonCell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use owo_colors::OwoColorize;
 use rt::backtrace::backtrace;
 use rt::thread::current;
 use rt::time::Instant;
-use spin::Once;
 
-static HOOK: Once<fn()> = Once::new();
+static HOOK: SingletonCell<fn()> = SingletonCell::new();
 
-pub fn hook_set_hook(f: fn()) {
-    HOOK.call_once(|| f);
+pub fn init_global(f: fn()) {
+    HOOK.initialize(f);
 }
 
 #[panic_handler]
 fn panic_handler(info: &PanicInfo) -> ! {
-    if let Some(f) = HOOK.get().cloned() {
+    if let Some(f) = HOOK.maybe().cloned() {
         f();
     }
 
@@ -23,8 +23,8 @@ fn panic_handler(info: &PanicInfo) -> ! {
     writeln!(s).unwrap();
 
     write!(s, "{}", "Panic".red()).unwrap();
-    if let Some(ms) = Instant::now()
-        .maybe_duration_since(Instant::ZERO)
+    if let Some(ms) = Instant::maybe_now()
+        .map(|x| x - Instant::ZERO)
         .map(|x| x.as_millis())
     {
         write!(s, " [{:#2}.{:#03}]", ms / 1000, ms % 1000).unwrap();

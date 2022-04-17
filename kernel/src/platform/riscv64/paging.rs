@@ -22,7 +22,7 @@ impl PagingEntry {
         global: bool,
     ) -> PagingEntry {
         let pte = 1
-            | (u8::from(permission) as usize) << 1
+            | (permission.as_u8() as usize) << 1
             | (user as usize) << 4
             | (global as usize) << 5
             | (paddr.to_usize() >> 12) << 10;
@@ -86,7 +86,7 @@ unsafe fn maintain(root: &FramesBox<PagingFrame>, mut vpns: &[usize]) {
                 return;
             }
         }
-        FramesBox::<PagingFrame>::from_raw(child.addr().into());
+        FramesBox::<PagingFrame>::from_raw(child.addr());
         *child = PagingEntry::new();
         vpns = &vpns[..vpns.len() - 1];
     }
@@ -106,20 +106,28 @@ const fn resolve(addr: VAddr) -> Option<([usize; 3], usize)> {
     ))
 }
 
+#[no_mangle]
+static mut GLOBAL: PagingFrame = PagingFrame::new();
+
+extern "C" {
+    #[link_name = "GLOBAL"]
+    static GLOBAL_SYMBOL: Symbol;
+}
+
 struct RawPagingInner {
     root: FramesBox<PagingFrame>,
 }
 
 impl RawPagingInner {
-    fn new(group: &RawPagingGroup) -> RawPagingInner {
+    fn new() -> RawPagingInner {
         let root = FramesBox::new(PagingFrame([PagingEntry::new(); 512])).unwrap();
         unsafe {
-            (*root.get())[511] = PagingEntry::new_inode(PAddr::new(group.0));
+            (*root.get())[511] = PagingEntry::new_inode(super::startup::address(&GLOBAL_SYMBOL));
         }
         RawPagingInner { root }
     }
-    fn token(&mut self) -> PagingToken {
-        PagingToken(0b1000usize << 60 | self.root.paddr().to_usize() >> 12)
+    fn token(&mut self) -> usize {
+        0b1000usize << 60 | self.root.paddr().to_usize() >> 12
     }
     fn map(
         &mut self,
@@ -131,7 +139,7 @@ impl RawPagingInner {
         global: bool,
     ) -> Result<(), PagingMapError> {
         use PagingMapError::*;
-        if !P::paging_permission(permission) {
+        if !P::check_permission(permission) {
             return Err(PermissionNotSupported);
         }
         if vaddr.to_usize() & (align - 1) != 0 || resolve(vaddr).is_none() {
@@ -179,7 +187,7 @@ impl RawPagingInner {
             unsafe {
                 let pte = find(&self.root, &[p3, p2, p1]);
                 assert!((*pte).valid(), "Overlapping");
-                let paddr = (*pte).addr().into();
+                let paddr = (*pte).addr();
                 pte.write_volatile(PagingEntry::new());
                 maintain(&self.root, &[p3, p2]);
                 return Ok(paddr);
@@ -189,7 +197,7 @@ impl RawPagingInner {
             unsafe {
                 let pte = find(&self.root, &[p3, p2]);
                 assert!((*pte).valid(), "Overlapping");
-                let paddr = (*pte).addr().into();
+                let paddr = (*pte).addr();
                 pte.write_volatile(PagingEntry::new());
                 maintain(&self.root, &[p3]);
                 return Ok(paddr);
@@ -199,7 +207,7 @@ impl RawPagingInner {
             unsafe {
                 let pte = find(&self.root, &[p3]);
                 assert!((*pte).valid(), "Overlapping");
-                let paddr = (*pte).addr().into();
+                let paddr = (*pte).addr();
                 pte.write_volatile(PagingEntry::new());
                 maintain(&self.root, &[]);
                 return Ok(paddr);
@@ -209,34 +217,22 @@ impl RawPagingInner {
     }
 }
 
-#[derive(Debug)]
-pub struct RawPagingGroup(usize);
-
-impl PagingGroup for RawPagingGroup {
-    fn new() -> Self {
-        Self(
-            FramesBox::new(PagingFrame::new())
-                .unwrap()
-                .into_raw()
-                .to_usize(),
-        )
-    }
-}
-
 pub struct RawPaging {
     inner: Mutex<RawPagingInner>,
 }
 
-impl Paging for RawPaging {
-    type Group = RawPagingGroup;
-    fn new(group: &RawPagingGroup) -> Self {
-        Self {
-            inner: Mutex::new(RawPagingInner::new(group)),
-        }
-    }
-    fn token(&self) -> PagingToken {
+impl RawPaging {
+    pub(in crate::platform) fn token(&self) -> usize {
         let mut inner = self.inner.lock();
         inner.token()
+    }
+}
+
+impl Paging for RawPaging {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(RawPagingInner::new()),
+        }
     }
     fn map(
         &self,

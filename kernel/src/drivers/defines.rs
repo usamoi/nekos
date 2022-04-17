@@ -1,5 +1,7 @@
 use crate::prelude::*;
-use mem::dma::DmaBox;
+use mem::dma::DmaAllocator;
+
+type DmaBox<T> = Box<T, DmaAllocator>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawDma {

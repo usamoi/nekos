@@ -1,24 +1,18 @@
-use crate::prelude::*;
 use core::alloc::Layout;
 use core::fmt::{Debug, Formatter, Pointer};
 use core::ops::{Add, Sub};
 
-// linker symbol
+// symbol
 
-extern "C" {
-    pub type LinkerSymbol;
-    pub static _kernel_address: LinkerSymbol;
-}
+#[repr(C)]
+pub struct Symbol([u8; 0]);
 
-impl LinkerSymbol {
+impl Symbol {
     pub fn as_usize(&self) -> usize {
         self as *const _ as usize
     }
     pub fn as_vaddr(&self) -> VAddr {
         VAddr::new(self.as_usize())
-    }
-    pub fn as_paddr(&self) -> PAddr {
-        unsafe { config::KERNEL_ADDRESS + (self.as_vaddr() - _kernel_address.as_vaddr()) }
     }
     pub const fn as_ptr<T>(&self) -> *const T {
         self as *const _ as *const T
@@ -26,18 +20,18 @@ impl LinkerSymbol {
     pub const fn as_mut_ptr<T>(&self) -> *mut T {
         self as *const _ as *mut T
     }
-    pub fn size_between(&self, other: &LinkerSymbol) -> usize {
+    pub fn size_between(&self, other: &Symbol) -> usize {
         unsafe { other.as_ptr::<u8>().offset_from(self.as_ptr::<u8>()) as usize }
     }
 }
 
-impl Pointer for LinkerSymbol {
+impl Pointer for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:#x}", self.as_usize())
     }
 }
 
-impl Debug for LinkerSymbol {
+impl Debug for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:#x}", self.as_usize())
     }
@@ -46,12 +40,11 @@ impl Debug for LinkerSymbol {
 // address
 
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
 #[pointer(fmt = "{:#x}", _0)]
 pub struct PAddr(usize);
 
 impl PAddr {
-    pub const NULL: Self = PAddr::new(0);
     pub const fn new(x: usize) -> Self {
         Self(x)
     }
@@ -81,7 +74,7 @@ impl From<usize> for PAddr {
     }
 }
 
-impl const Add<usize> for PAddr {
+impl Add<usize> for PAddr {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
@@ -112,7 +105,7 @@ impl Debug for PAddr {
 }
 
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, derive_more::Pointer)]
 #[pointer(fmt = "{:#x}", _0)]
 pub struct VAddr(usize);
 
@@ -121,7 +114,7 @@ impl VAddr {
         Self(x)
     }
     pub const fn to_usize(self) -> usize {
-        self.into()
+        self.0
     }
 }
 
@@ -137,7 +130,7 @@ impl From<usize> for VAddr {
     }
 }
 
-impl const Add<usize> for VAddr {
+impl Add<usize> for VAddr {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
@@ -175,34 +168,28 @@ pub struct Segment<P> {
     end: Option<P>,
 }
 
-impl<P: Copy> Segment<P> {
+impl<P: Copy + Default + Ord> Segment<P> {
     pub const fn start(self) -> P {
         self.start
     }
     pub const fn end(self) -> Option<P> {
         self.end
     }
-}
-
-impl<P> Segment<P> {
-    pub const fn new(start: P, end: Option<P>) -> Option<Self>
-    where
-        P: ~const InSegment,
-    {
-        InSegment::new(start, end)
+    pub fn new(start: P, end: Option<P>) -> Option<Self> {
+        match end {
+            Some(end) if start > end => None,
+            end => Some(Segment { start, end }),
+        }
     }
-}
-
-impl<P: InSegment> Segment<P> {
-    pub const fn wrapping_end(self) -> P {
+    pub fn wrapping_end(self) -> P {
         match self.end {
             Some(end) => end,
-            None => P::ZERO,
+            None => P::default(),
         }
     }
     pub fn is_empty(self) -> bool {
         match self.end {
-            Some(end) => (self.start..end).is_empty(),
+            Some(end) => self.start >= end,
             None => false,
         }
     }
@@ -220,63 +207,40 @@ impl<P: Debug> Debug for Segment<P> {
     }
 }
 
-pub trait InSegment: Copy + Ord {
-    const ZERO: Self;
-    fn new(start: Self, end: Option<Self>) -> Option<Segment<Self>>;
-    fn forward(self, x: usize) -> Option<Option<Self>>;
+pub trait SegmentForward: Copy + Ord + Default {
+    fn forward(self, size: usize) -> Option<Option<Self>>;
 }
 
-impl const InSegment for usize {
-    const ZERO: Self = 0;
-    fn new(start: Self, end: Option<Self>) -> Option<Segment<Self>> {
-        match end {
-            Some(end) if start > end => None,
-            end => Some(Segment { start, end }),
+impl SegmentForward for usize {
+    fn forward(self, size: usize) -> Option<Option<Self>> {
+        if self == Self::default() || self.wrapping_neg() > size {
+            return Some(Some(self + size));
         }
-    }
-    fn forward(self, x: usize) -> Option<Option<Self>> {
-        if self == 0 || self.wrapping_neg() > x {
-            return Some(Some(self + x));
-        }
-        if self.wrapping_neg() == x {
+        if self.wrapping_neg() == size {
             return Some(None);
         }
         None
     }
 }
 
-impl const InSegment for PAddr {
-    const ZERO: Self = Self::new(0);
-    fn new(start: Self, end: Option<Self>) -> Option<Segment<Self>> {
-        match end {
-            Some(end) if start.0 > end.0 => None,
-            end => Some(Segment { start, end }),
+impl SegmentForward for PAddr {
+    fn forward(self, size: usize) -> Option<Option<Self>> {
+        if self == Self::default() || self.0.wrapping_neg() > size {
+            return Some(Some(self + size));
         }
-    }
-    fn forward(self, x: usize) -> Option<Option<Self>> {
-        if self.0 == 0 || self.0.wrapping_neg() > x {
-            return Some(Some(self + x));
-        }
-        if self.0.wrapping_neg() == x {
+        if self.0.wrapping_neg() == size {
             return Some(None);
         }
         None
     }
 }
 
-impl const InSegment for VAddr {
-    const ZERO: Self = Self::new(0);
-    fn new(start: Self, end: Option<Self>) -> Option<Segment<Self>> {
-        match end {
-            Some(end) if start.0 > end.0 => None,
-            end => Some(Segment { start, end }),
+impl SegmentForward for VAddr {
+    fn forward(self, size: usize) -> Option<Option<Self>> {
+        if self == Self::default() || self.0.wrapping_neg() > size {
+            return Some(Some(self + size));
         }
-    }
-    fn forward(self, x: usize) -> Option<Option<Self>> {
-        if self.0 == 0 || self.0.wrapping_neg() > x {
-            return Some(Some(self + x));
-        }
-        if self.0.wrapping_neg() == x {
+        if self.0.wrapping_neg() == size {
             return Some(None);
         }
         None
@@ -287,7 +251,7 @@ pub trait SegmentContains<P> {
     fn contains(lhs: Segment<P>, rhs: Self) -> bool;
 }
 
-impl<P: InSegment> SegmentContains<P> for P {
+impl<P: Copy + Default + Ord> SegmentContains<P> for P {
     fn contains(lhs: Segment<P>, rhs: Self) -> bool {
         match lhs.end {
             Some(r) => lhs.start <= rhs && rhs < r,
@@ -296,7 +260,7 @@ impl<P: InSegment> SegmentContains<P> for P {
     }
 }
 
-impl<P: InSegment> SegmentContains<P> for Segment<P> {
+impl<P: Copy + Default + Ord> SegmentContains<P> for Segment<P> {
     fn contains(lhs: Segment<P>, rhs: Self) -> bool {
         if rhs.is_empty() {
             return true;
@@ -312,11 +276,11 @@ impl<P: InSegment> SegmentContains<P> for Segment<P> {
     }
 }
 
-pub const fn by_size<T: ~const InSegment>(addr: T, size: usize) -> Option<Segment<T>> {
+pub fn by_size<T: SegmentForward>(addr: T, size: usize) -> Option<Segment<T>> {
     Segment::new(addr, addr.forward(size)?)
 }
 
-pub const fn by_points<T: ~const InSegment>(start: T, end: T) -> Option<Segment<T>> {
+pub fn by_points<T: Copy + Default + Ord>(start: T, end: T) -> Option<Segment<T>> {
     Segment::new(start, Some(end))
 }
 
@@ -380,11 +344,8 @@ impl Permission {
             execute,
         }
     }
-}
-
-impl const From<Permission> for u8 {
-    fn from(x: Permission) -> u8 {
-        x.read as u8 | (x.write as u8) << 1 | (x.execute as u8) << 2
+    pub const fn as_u8(self) -> u8 {
+        self.read as u8 | (self.write as u8) << 1 | (self.execute as u8) << 2
     }
 }
 

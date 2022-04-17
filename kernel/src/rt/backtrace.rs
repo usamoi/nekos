@@ -13,7 +13,7 @@ impl Debug for BacktraceFrame {
     }
 }
 
-#[inline]
-pub unsafe fn backtrace() -> ArrayVec<BacktraceFrame, { config::BACKTRACE_LIMIT }> {
+#[inline(always)]
+pub unsafe fn backtrace() -> ArrayVec<BacktraceFrame, { config::BACKTRACE }> {
     P::backtrace()
 }

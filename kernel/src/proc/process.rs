@@ -94,7 +94,7 @@ impl Process {
 }
 
 impl Environment {
-    pub async fn process_fault(&self, fault: ProcessFault) -> EffKill<!> {
+    pub async fn process_fault(&self, fault: ProcessFault) -> Flow<!> {
         use proc::process::ProcessStopError::*;
         use ProcessDeath::*;
         match self.process.stop(Fault(fault)) {
@@ -105,7 +105,7 @@ impl Environment {
         }
         self.thread_fault().await
     }
-    pub async fn process_exit(&self, exit_code: isize) -> EffKill<!> {
+    pub async fn process_exit(&self, exit_code: isize) -> Flow<!> {
         use proc::process::ProcessStopError::*;
         use ProcessDeath::*;
         match self.process.stop(Exited(exit_code)) {

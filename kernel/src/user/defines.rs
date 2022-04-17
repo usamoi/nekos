@@ -1,7 +1,11 @@
 use crate::prelude::*;
 use core::any::Any;
 use core::cmp::Ordering;
+use core::convert::Infallible;
 use core::marker::PhantomData;
+use core::ops::{ControlFlow, FromResidual, Try};
+
+pub type Arguments = [usize; 6];
 
 pub type HandleID = usize;
 
@@ -22,6 +26,24 @@ pub struct Handle<T: ?Sized = dyn Object> {
     pub object: Arc<T>,
 }
 
+pub trait HandleUpcast {
+    fn upcast(self) -> Handle;
+}
+
+impl<T: Object + Sized> HandleUpcast for Handle<T> {
+    fn upcast(self) -> Handle {
+        Handle {
+            object: self.object,
+        }
+    }
+}
+
+impl HandleUpcast for Handle {
+    fn upcast(self) -> Handle {
+        self
+    }
+}
+
 impl<T: Object + ?Sized> Handle<T> {
     pub fn new(object: Arc<T>) -> Handle<T> {
         Handle { object }
@@ -29,12 +51,6 @@ impl<T: Object + ?Sized> Handle<T> {
     pub fn downcast<U: Object>(self) -> Option<Handle<U>> {
         let object = Arc::downcast::<U>(self.object.upcast()).ok()?;
         Some(Handle { object })
-    }
-}
-
-impl<T: HandleUpcast> Handle<T> {
-    pub fn upcast(self) -> Handle {
-        HandleUpcast::upcast(self)
     }
 }
 
@@ -48,7 +64,9 @@ impl<T: Object + ?Sized> Clone for Handle<T> {
 
 impl<T: Object + ?Sized> PartialEq for Handle<T> {
     fn eq(&self, other: &Self) -> bool {
-        PartialEq::eq(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+        let lhs = Arc::as_ptr(&self.object);
+        let rhs = Arc::as_ptr(&other.object);
+        PartialEq::eq(&lhs, &rhs)
     }
 }
 
@@ -56,72 +74,69 @@ impl<T: Object + ?Sized> Eq for Handle<T> {}
 
 impl<T: Object + ?Sized> PartialOrd for Handle<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        PartialOrd::partial_cmp(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+        let lhs = Arc::as_ptr(&self.object);
+        let rhs = Arc::as_ptr(&other.object);
+        PartialOrd::partial_cmp(&lhs, &rhs)
     }
 }
 
 impl<T: Object + ?Sized> Ord for Handle<T> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        Ord::cmp(&Arc::as_ptr(&self.object), &Arc::as_ptr(&other.object))
+        let lhs = Arc::as_ptr(&self.object);
+        let rhs = Arc::as_ptr(&other.object);
+        Ord::cmp(&lhs, &rhs)
     }
 }
-
-pub trait HandleUpcast: Object {
-    fn upcast(this: Handle<Self>) -> Handle;
-}
-
-impl<T: Object + Sized> HandleUpcast for T {
-    fn upcast(this: Handle<Self>) -> Handle {
-        Handle {
-            object: this.object,
-        }
-    }
-}
-
-impl HandleUpcast for dyn Object {
-    fn upcast(this: Handle<Self>) -> Handle {
-        this
-    }
-}
-
-pub type Arguments = [usize; 6];
 
 pub trait Domain: Sized {
-    fn from_arguments(env: &Environment, x: usize) -> EffSys<Self>;
+    type Error: DomainError;
+    fn from_arguments(env: &Environment, x: usize)
+        -> Flow<Self, Either<GeneralError, Self::Error>>;
 }
 
 pub trait Codomain: Sized {
     fn to_return_value(self) -> usize;
 }
 
-#[must_use]
-pub struct Errno(u32);
+pub struct Effect;
 
-impl Errno {
-    pub const fn new<const CODE: u32>() -> Self
-    where
-        Errno: Errnos<{ CODE }>,
-    {
-        Self(CODE)
-    }
-    pub const fn into_raw(&self) -> u32 {
-        self.0
+pub enum UserError {
+    General(GeneralError),
+    Domain { order: u8, code: u8 },
+    Syscall { code: u8 },
+}
+
+impl From<UserError> for u32 {
+    fn from(x: UserError) -> u32 {
+        match x {
+            UserError::General(e) => 1 << 24 | e as u32,
+            UserError::Domain { order, code } => 2 << 24 | (order as u32) << 8 | code as u32,
+            UserError::Syscall { code } => 3 << 24 | code as u32,
+        }
     }
 }
 
-pub trait Errnos<const CODE: u32> {}
-
-pub macro impl_errno($name:ident, $code:literal) {
-    impl Errno {
-        pub const $name: Errno = Errno::new::<{ $code }>();
-    }
-    impl Errnos<{ $code }> for Errno {}
-    static_assertions::const_assert_ne!($code, 0);
+#[repr(u8)]
+pub enum GeneralError {
+    Internal = 0,
+    InvaildSyscall = 1,
+    NotSupported = 2,
+    NotImplemented = 3,
 }
 
-impl_errno!(GENERAL_INTERNAL, 0xa9244d1cu32);
-impl_errno!(GENERAL_INVALID_SYSCALL, 0x7f06733du32);
-impl_errno!(GENERAL_NOT_SUPPORTED, 0xc2966069u32);
+pub trait DomainError {
+    fn into_u8(self) -> u8;
+}
+
+pub trait SyscallError {
+    fn into_u8(self) -> u8;
+}
+
+impl SyscallError for ! {
+    fn into_u8(self) -> u8 {
+        self
+    }
+}
 
 pub struct Syscall(PhantomData<()>);
 
@@ -134,7 +149,8 @@ pub trait Syscalls<const CODE: u32> {
     type Domain4: Domain = ();
     type Domain5: Domain = ();
     type Codomain: Codomain = ();
-    async fn syscall(env: &Environment, args: syscall_domain!()) -> EffSys<Self::Codomain>;
+    type Error: SyscallError;
+    async fn syscall(env: &Environment, args: domain!()) -> codomain!();
 }
 
 pub macro impl_syscall($name:ident, $code:literal) {
@@ -143,7 +159,7 @@ pub macro impl_syscall($name:ident, $code:literal) {
     }
 }
 
-pub macro syscall_domain() {
+pub macro domain() {
     (
         Self::Domain0,
         Self::Domain1,
@@ -152,4 +168,75 @@ pub macro syscall_domain() {
         Self::Domain4,
         Self::Domain5,
     )
+}
+
+pub macro codomain() {
+    Flow<Self::Codomain, Either<GeneralError, Self::Error>>
+}
+
+pub enum Flow<T, E = !> {
+    Ok(T),
+    Err(E),
+    Eff(Effect),
+}
+
+impl<T, E> Try for Flow<T, E> {
+    type Output = T;
+
+    type Residual = Flow<!, E>;
+
+    fn from_output(output: Self::Output) -> Self {
+        Flow::Ok(output)
+    }
+
+    fn branch(self) -> core::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            Flow::Ok(v) => ControlFlow::Continue(v),
+            Flow::Err(e) => ControlFlow::Break(Flow::Err(e)),
+            Flow::Eff(e) => ControlFlow::Break(Flow::Eff(e)),
+        }
+    }
+}
+
+impl<T, E, F: From<E>> FromResidual<Flow<!, E>> for Flow<T, F> {
+    fn from_residual(residual: Flow<!, E>) -> Self {
+        match residual {
+            Flow::Ok(_infallible) => _infallible,
+            Flow::Err(e) => Flow::Err(e.into()),
+            Flow::Eff(e) => Flow::Eff(e),
+        }
+    }
+}
+
+impl<T, E, F: From<E>> FromResidual<Result<Infallible, E>> for Flow<T, F> {
+    fn from_residual(residual: Result<Infallible, E>) -> Self {
+        match residual {
+            Result::Ok(_infallible) => match _infallible {},
+            Result::Err(e) => Flow::Err(e.into()),
+        }
+    }
+}
+
+impl<T, E> Flow<T, E> {
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Flow<U, E> {
+        match self {
+            Flow::Ok(t) => Flow::Ok(f(t)),
+            Flow::Err(e) => Flow::Err(e),
+            Flow::Eff(e) => Flow::Eff(e),
+        }
+    }
+    pub fn map_err<F, O: FnOnce(E) -> F>(self, f: O) -> Flow<T, F> {
+        match self {
+            Flow::Ok(t) => Flow::Ok(t),
+            Flow::Err(e) => Flow::Err(f(e)),
+            Flow::Eff(e) => Flow::Eff(e),
+        }
+    }
+    pub fn shift(self) -> Flow<Result<T, E>> {
+        match self {
+            Flow::Ok(t) => Flow::Ok(Ok(t)),
+            Flow::Err(e) => Flow::Ok(Err(e)),
+            Flow::Eff(e) => Flow::Eff(e),
+        }
+    }
 }

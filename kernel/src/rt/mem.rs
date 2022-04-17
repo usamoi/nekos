@@ -1,66 +1,72 @@
 use crate::prelude::*;
-use spin::Once;
+use base::cell::SingletonCell;
 
-pub struct RegionBuilder {
+pub struct MemoryBuilder {
     pub start: PAddr,
     pub ptr: PAddr,
     pub end: PAddr,
-    pub use_buffer: Option<Segment<PAddr>>,
+    pub buffer: Option<Segment<PAddr>>,
 }
 
-impl RegionBuilder {
-    pub fn new(segment: Segment<PAddr>) -> RegionBuilder {
-        RegionBuilder {
+impl MemoryBuilder {
+    pub fn new(segment: Segment<PAddr>) -> MemoryBuilder {
+        MemoryBuilder {
             start: segment.start(),
             ptr: segment.start(),
             end: segment.end().unwrap(),
-            use_buffer: None,
+            buffer: None,
         }
     }
-    pub fn alloc_addr(&mut self, addr: PAddr) {
+    pub fn brk(&mut self, addr: PAddr) {
         self.ptr = core::cmp::max(self.ptr, addr);
-        if self.ptr > self.end {
-            panic!("region memory overflow");
-        }
+        assert!(self.ptr <= self.end);
     }
-    pub fn alloc_size(&mut self, size: usize) -> Segment<PAddr> {
+    pub fn sbrk(&mut self, size: usize) -> Segment<PAddr> {
         let ptr = self.ptr;
         self.ptr = ptr + size;
-        if self.ptr > self.end {
-            panic!("region memory overflow");
-        }
+        assert!(self.ptr <= self.end);
         by_size(ptr, size).unwrap()
     }
-    pub fn set_buffer(&mut self, buffer: Segment<PAddr>) {
-        self.use_buffer = Some(buffer);
+    pub fn alloc(&mut self, layout: MapLayout) -> PAddr {
+        self.ptr = self.ptr.to_usize().next_multiple_of(layout.align()).into();
+        let ans = self.ptr;
+        self.ptr = self.ptr + layout.size();
+        assert!(self.ptr <= self.end);
+        ans
     }
-    pub fn finish(self) -> Option<Region> {
-        Some(Region {
+    pub fn alloc_buffer(&mut self) {
+        let buffer = self.sbrk((self.end - self.start) / 4096 * 2);
+        self.buffer = Some(buffer);
+    }
+    pub fn finish(mut self) -> Option<Memory> {
+        self.ptr = self.ptr.to_usize().next_multiple_of(4096).into();
+        assert!(self.ptr <= self.end);
+        Some(Memory {
             start: self.start,
             ptr: self.ptr,
             end: self.end,
-            use_buffer: self.use_buffer?,
+            buffer: self.buffer?,
         })
     }
 }
 
-pub struct Region {
+pub struct Memory {
     pub start: PAddr,
     pub ptr: PAddr,
     pub end: PAddr,
-    pub use_buffer: Segment<PAddr>,
+    pub buffer: Segment<PAddr>,
 }
 
-static MEMORY: Once<Region> = Once::new();
+static MEMORY: SingletonCell<Memory> = SingletonCell::new();
 
-pub fn maybe_memory() -> Option<&'static Region> {
-    MEMORY.get()
+pub fn maybe_memory() -> Option<&'static Memory> {
+    MEMORY.maybe()
 }
 
-pub fn memory() -> &'static Region {
+pub fn memory() -> &'static Memory {
     maybe_memory().unwrap()
 }
 
-pub fn hook_set_memory_region(region: Region) {
-    MEMORY.call_once(|| region);
+pub fn init_global(region: MemoryBuilder) {
+    MEMORY.initialize(region.finish().unwrap());
 }

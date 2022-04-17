@@ -45,8 +45,8 @@ impl Area {
     ) -> Result<(), AreaMapError> {
         use AreaMapError::*;
         ensure!(map.layout().check(vaddr.to_usize()), BadAddress);
-        ensure!(P::paging_align(map.layout().align()), AlignNotSupported);
-        ensure!(P::paging_permission(permission), PermissionNotSupported);
+        ensure!(P::check_align(map.layout().align()), AlignNotSupported);
+        ensure!(P::check_permission(permission), PermissionNotSupported);
         let segment = by_size(vaddr, map.layout().size()).ok_or(OutOfRange)?;
         self.page_allocator
             .lock()
@@ -66,8 +66,8 @@ impl Area {
         permission: Permission,
     ) -> Result<VAddr, AreaFindMapError> {
         use AreaFindMapError::*;
-        ensure!(P::paging_align(map.layout().align()), AlignNotSupported);
-        ensure!(P::paging_permission(permission), PermissionNotSupported);
+        ensure!(P::check_align(map.layout().align()), AlignNotSupported);
+        ensure!(P::check_permission(permission), PermissionNotSupported);
         let mut guard = self.page_allocator.lock();
         let segment = guard.find(map.layout())?;
         guard

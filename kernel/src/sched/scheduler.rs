@@ -77,8 +77,12 @@ pub fn initproc() -> &'static Arc<Process> {
 
 pub fn forever() -> ! {
     loop {
-        if initproc().is_dead() {
-            panic!("initproc exited unexpectedly",);
+        // todo: fix it
+        if initproc().is_dead() || initproc().thread_set.threads.lock().len() == 0 {
+            panic!(
+                "initproc exited unexpectedly, status = {:?}",
+                initproc().status()
+            );
         }
         if let Some(task) = SCHEDULER.pop() {
             let duration = config::SCHEDULE_TIMESLICE;

@@ -32,8 +32,8 @@ impl<const S: usize, const T: usize> LinkedList<S, T> {
         if self.map.is_empty() {
             let xaddr = dma_alloc(4096, 4096);
             let mut arr = [0u8; T];
-            for i in 0..T - 1 {
-                arr[i] = i as u8 + 1;
+            for (i, item) in arr.iter_mut().enumerate().take(T - 1) {
+                *item = i as u8 + 1;
             }
             arr[T - 1] = T as u8 - 1;
             self.map.insert(xaddr, (0, arr));
@@ -78,6 +78,7 @@ static L7: Mutex<LinkedList<2048, 2>> = Mutex::new(LinkedList::new());
 pub struct DmaAllocator;
 
 unsafe impl Allocator for DmaAllocator {
+    #[allow(clippy::match_overlapping_arm)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let metadata = layout.size();
         let layout = layout.pad_to_align();
@@ -85,14 +86,14 @@ unsafe impl Allocator for DmaAllocator {
         let align = layout.align();
         let data_address = match size {
             0 => NonNull::new(align as *mut ()).unwrap(),
-            0..=16 => L0.lock().alloc().cast(),
-            0..=32 => L1.lock().alloc().cast(),
-            0..=64 => L2.lock().alloc().cast(),
-            0..=128 => L3.lock().alloc().cast(),
-            0..=256 => L4.lock().alloc().cast(),
-            0..=512 => L5.lock().alloc().cast(),
-            0..=1024 => L6.lock().alloc().cast(),
-            0..=2048 => L7.lock().alloc().cast(),
+            1..=16 => L0.lock().alloc().cast(),
+            1..=32 => L1.lock().alloc().cast(),
+            1..=64 => L2.lock().alloc().cast(),
+            1..=128 => L3.lock().alloc().cast(),
+            1..=256 => L4.lock().alloc().cast(),
+            1..=512 => L5.lock().alloc().cast(),
+            1..=1024 => L6.lock().alloc().cast(),
+            1..=2048 => L7.lock().alloc().cast(),
             _ => {
                 let size = core::cmp::max(4096, size);
                 let align = core::cmp::max(4096, align);
@@ -103,6 +104,7 @@ unsafe impl Allocator for DmaAllocator {
         Ok(NonNull::from_raw_parts(data_address, metadata))
     }
 
+    #[allow(clippy::match_overlapping_arm)]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         let layout = layout.pad_to_align();
         let size = layout.size();
@@ -111,13 +113,13 @@ unsafe impl Allocator for DmaAllocator {
         match size {
             0 => assert_eq!(addr, align),
             1..=16 => L0.lock().dealloc(addr),
-            17..=32 => L1.lock().dealloc(addr),
-            33..=64 => L2.lock().dealloc(addr),
-            65..=128 => L3.lock().dealloc(addr),
-            129..=256 => L4.lock().dealloc(addr),
-            257..=512 => L5.lock().dealloc(addr),
-            513..=1024 => L6.lock().dealloc(addr),
-            1025..=2048 => L7.lock().dealloc(addr),
+            1..=32 => L1.lock().dealloc(addr),
+            1..=64 => L2.lock().dealloc(addr),
+            1..=128 => L3.lock().dealloc(addr),
+            1..=256 => L4.lock().dealloc(addr),
+            1..=512 => L5.lock().dealloc(addr),
+            1..=1024 => L6.lock().dealloc(addr),
+            1..=2048 => L7.lock().dealloc(addr),
             _ => {
                 let size = core::cmp::max(4096, size);
                 let align = core::cmp::max(4096, align);
@@ -126,5 +128,3 @@ unsafe impl Allocator for DmaAllocator {
         }
     }
 }
-
-pub type DmaBox<T> = Box<T, DmaAllocator>;

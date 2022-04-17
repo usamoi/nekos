@@ -22,11 +22,10 @@ static MOD: SingletonCell<Mod> = SingletonCell::new();
 
 pub unsafe fn init_global() {
     let memory = rt::mem::memory();
-    let segment = by_points(memory.start, memory.end).unwrap();
-    let buffer_size = (memory.end - memory.start) / 4096 * 2;
-    let buffer_paddr = memory.use_buffer.start();
+    let segment = by_points(memory.ptr, memory.end).unwrap();
+    let buffer_size = memory.buffer.wrapping_end() - memory.buffer.start();
     let buffer_slice =
-        core::slice::from_raw_parts_mut(buffer_paddr.to_usize() as *mut i8, buffer_size);
+        core::slice::from_raw_parts_mut(memory.buffer.start().to_usize() as *mut i8, buffer_size);
     let buddy_start = segment.start().to_usize().div_ceil(4096);
     let buddy_end = segment.end().map(|x| x.to_usize() >> 12);
     let buddy_segment = Segment::new(buddy_start, buddy_end).unwrap();
@@ -34,9 +33,7 @@ pub unsafe fn init_global() {
     let allocator = Mod {
         buddy: Mutex::new(buddy),
     };
-    let reserve_size = memory.ptr - memory.start;
     MOD.initialize(allocator);
-    set(by_size(memory.start, reserve_size).unwrap(), true);
 }
 
 // todo: non-continuous alloc
@@ -64,16 +61,6 @@ pub unsafe fn dealloc(paddr: PAddr, layout: MapLayout) {
     let addr = paddr.to_usize() >> 12;
     let size = layout.size() >> 12;
     buddy.dealloc(addr, size).unwrap();
-}
-
-unsafe fn set(segment: Segment<PAddr>, val: bool) {
-    assert!(!segment.is_empty());
-    assert!(segment.start().to_usize() % 4096 == 0);
-    assert!(segment.wrapping_end().to_usize() % 4096 == 0);
-    let mut buddy = MOD.buddy.lock();
-    let start = segment.start().to_usize() >> 12;
-    let end = segment.end().map(|x| x.to_usize() >> 12);
-    buddy.set(Segment::new(start, end).unwrap(), val).unwrap();
 }
 
 pub struct FramesBox<T>(*mut T);

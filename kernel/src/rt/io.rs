@@ -5,7 +5,7 @@ pub struct StdoutLock<'a>(MutexGuard<'a, ()>);
 
 impl<'a> core::fmt::Write for StdoutLock<'a> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        P::io_write(s);
+        P::write(s);
         Ok(())
     }
 }

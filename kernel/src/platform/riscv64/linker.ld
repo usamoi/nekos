@@ -9,7 +9,7 @@ PHDRS
     data PT_LOAD;
     bss PT_LOAD;
     tls PT_TLS;
-    uninit PT_LOAD;
+    brk PT_LOAD;
 }
 
 SECTIONS
@@ -63,9 +63,8 @@ SECTIONS
 
     .data : ALIGN(4K) {
         PROVIDE(_data_start = .);
-        *(.got)
-        PROVIDE(__global_pointer$ = .);
         *(.sdata .sdata.*)
+        PROVIDE(__global_pointer$ = .);
         *(.data .data.*)
         . = ALIGN(4K);
         PROVIDE(_data_end = .);
@@ -79,20 +78,19 @@ SECTIONS
         PROVIDE(_bss_end = .);
     } :bss
 
-    .uninit : ALIGN(4K)  {
-        PROVIDE(_uninit_start = .);
-        PROVIDE(_utls_start = .);
+    . = ALIGN(4K);
+    PROVIDE(_brk_start = .);
+    .brk : {
+        PROVIDE(_brk_tls_start = .);
         . += SIZEOF(.tdata) + SIZEOF(.tbss);
-        PROVIDE(_utls_end = .);
-        PROVIDE(_ustack_start = .);
-        KEEP(*(.uninit.ustack))
-        . = ALIGN(4K);
-        PROVIDE(_ustack_end = .);
-        PROVIDE(_uninit_end = .);
-    } :uninit
-
-    PROVIDE(_guard_start = .);
-    PROVIDE(_guard_end = BASE_ADDRESS + 1024M);
+        PROVIDE(_brk_tls_end = .);
+        KEEP(*(.brk.stack))
+        KEEP(*(.brk.heap))
+        KEEP(*(.brk .brk.*))
+    } :brk
+    . = ALIGN(4K);
+    PROVIDE(_brk_ptr = .);
+    PROVIDE(_brk_end = BASE_ADDRESS + 1024M);
 
     /DISCARD/ : {}
 }

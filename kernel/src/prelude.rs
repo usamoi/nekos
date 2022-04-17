@@ -5,7 +5,7 @@ pub use crate::{base, base::either::*, base::error::*};
 pub use crate::{drivers, drivers::defines::*};
 pub use crate::{mem, mem::defines::*};
 pub use crate::{proc, proc::defines::*};
-pub use crate::{rt, rt::macros::*};
+pub use crate::{rt, rt::macros::*, rt::trap::*};
 pub use crate::{sched, sched::defines::*};
 pub use crate::{user, user::defines::*};
 

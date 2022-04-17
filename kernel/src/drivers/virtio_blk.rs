@@ -4,7 +4,9 @@ use base::cell::VolCell;
 use drivers::virtio::mmio::MMIO;
 use drivers::virtio::queue::VirtQueue;
 use drivers::virtio::DeviceType;
-use mem::dma::{DmaAllocator, DmaBox};
+use mem::dma::DmaAllocator;
+
+type DmaBox<T> = Box<T, DmaAllocator>;
 
 pub const QUEUE: u32 = 0;
 

@@ -4,29 +4,6 @@ use core::pin::Pin;
 use proc::process::Process;
 use proc::thread::Thread;
 
-#[derive(Debug)]
-pub enum Exception {
-    IllegalInstruction,
-    Misaligned { access: Access, addr: VAddr },
-    PageFault { access: Access, addr: VAddr },
-    Syscall { id: usize, args: Arguments },
-    Breakpoint,
-}
-
-#[derive(Debug)]
-pub enum Interrupt {
-    Timer,
-    Software { value: usize },
-    Hardware { value: usize },
-}
-
-#[derive(Debug)]
-pub enum Trap {
-    Unknown,
-    Exception(Exception),
-    Interrupt(Interrupt),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessFault {
     IllegalInstruction,
@@ -100,58 +77,8 @@ impl Environment {
         };
         Box::pin(async move {
             match this.start().await {
-                EffectKill::Kill => (),
+                Effect => (),
             }
         })
     }
 }
-
-#[must_use]
-pub enum SideEffect {
-    KillProcess(ProcessDeath),
-}
-
-impl Environment {
-    pub async fn handle_side_effect<T, E: Into<SideEffect>>(
-        &self,
-        result: Result<T, E>,
-    ) -> EffKill<T> {
-        use SideEffect::*;
-        match result.map_err(Into::into) {
-            Ok(x) => Ok(x),
-            Err(KillProcess(ProcessDeath::Fault(fault))) => {
-                self.process_fault(fault).await.map(|x| x)
-            }
-            Err(KillProcess(ProcessDeath::Exited(code))) => {
-                self.process_exit(code).await.map(|x| x)
-            }
-        }
-    }
-}
-
-#[must_use]
-pub enum EffectKill {
-    Kill,
-}
-
-pub type EffKill<T> = Result<T, EffectKill>;
-
-#[must_use]
-pub enum EffectSys {
-    Errno(Errno),
-    EffectKill(EffectKill),
-}
-
-impl From<EffectKill> for EffectSys {
-    fn from(e: EffectKill) -> Self {
-        EffectSys::EffectKill(e)
-    }
-}
-
-impl From<Errno> for EffectSys {
-    fn from(e: Errno) -> Self {
-        EffectSys::Errno(e)
-    }
-}
-
-pub type EffSys<T> = Result<T, EffectSys>;

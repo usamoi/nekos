@@ -1,31 +1,22 @@
 use crate::prelude::*;
 use alloc::collections::BTreeMap;
+use base::cell::SingletonCell;
 use base::thread::ThreadLocalRef;
-use rt::time::Instant;
-use spin::Once;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Extra {
-    pub frequency: u64,
-}
+pub struct Thread {}
 
-pub struct Thread {
-    pub stack: Segment<usize>,
-    pub extra: Extra,
-}
-
-static THREADS: Once<BTreeMap<usize, Thread>> = Once::new();
+static THREADS: SingletonCell<BTreeMap<usize, Thread>> = SingletonCell::new();
 
 pub fn maybe_threads() -> Option<&'static BTreeMap<usize, Thread>> {
-    THREADS.get()
+    THREADS.maybe()
 }
 
 pub fn threads() -> &'static BTreeMap<usize, Thread> {
     maybe_threads().unwrap()
 }
 
-pub fn hook_set_threads(threads: BTreeMap<usize, Thread>) {
-    THREADS.call_once(|| threads);
+pub fn init_global(threads: BTreeMap<usize, Thread>) {
+    THREADS.initialize(threads);
 }
 
 pub struct Current {}
@@ -35,16 +26,7 @@ impl Current {
         Self {}
     }
     pub fn id(&self) -> usize {
-        P::thread_id()
-    }
-    pub fn flush_ins(&self) {
-        P::thread_flush_ins();
-    }
-    pub fn flush_tlb(&self) {
-        P::thread_flush_tlb();
-    }
-    pub fn set_timer(&self, time: Instant) {
-        P::time_timer(time.value());
+        P::id()
     }
 }
 

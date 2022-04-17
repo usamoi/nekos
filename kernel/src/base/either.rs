@@ -32,3 +32,9 @@ impl<T, U> Either<T, U> {
         }
     }
 }
+
+impl<T, U> From<U> for Either<T, U> {
+    fn from(x: U) -> Self {
+        Right(x)
+    }
+}

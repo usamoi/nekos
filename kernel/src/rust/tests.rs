@@ -22,7 +22,7 @@ pub fn runner(tests: &[&dyn Fn()]) -> ! {
         print!("{}", "passed".green());
         println!();
     }
-    let duration = Instant::now().duration_since(start_time);
+    let duration = Instant::now() - start_time;
     println!("test result: done. {} passed.", count);
     println!("finished in {:?}.", duration);
     rt::process::abort();

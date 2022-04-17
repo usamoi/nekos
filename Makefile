@@ -21,6 +21,6 @@ run: all
 		-global virtio-mmio.force-legacy=false \
 		-machine virt -bios default \
 		-nographic -smp cpus=8 -m 512M \
-		-kernel target/make.bin
+		-kernel target/make.bin \
 		-drive file=$(DISK),if=none,format=raw,id=x0 \
     	-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0

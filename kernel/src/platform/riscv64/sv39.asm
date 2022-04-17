@@ -3,7 +3,7 @@
 _satp:
 	.option push
 	.option norelax
-    la t0, _pt
+    la t0, _sv39
     srli t0, t0, 12
     li t1, 0b1000 << 60
     or t0, t0, t1
@@ -15,7 +15,7 @@ _satp:
 
     .section .rodata
     .balign 4096
-_pt:
+_sv39:
     // positive
     .8byte 0x0000000000 >> 12 << 10 | 0b001111
     .8byte 0x0040000000 >> 12 << 10 | 0b001111

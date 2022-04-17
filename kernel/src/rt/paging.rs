@@ -15,24 +15,8 @@ pub enum PagingUnmapError {
     AlignNotSupported,
 }
 
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct PagingToken(pub usize);
-
-impl PagingToken {
-    pub unsafe fn switch(self) {
-        P::paging_token_switch(self);
-    }
-}
-
-pub trait PagingGroup: Debug + Send + Sync {
-    fn new() -> Self;
-}
-
 pub trait Paging: Debug + Send + Sync {
-    type Group;
-    fn new(group: &Self::Group) -> Self;
-    fn token(&self) -> PagingToken;
+    fn new() -> Self;
     fn map(
         &self,
         vaddr: VAddr,

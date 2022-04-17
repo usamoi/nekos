@@ -20,7 +20,7 @@ impl SignalSet {
 }
 
 impl Environment {
-    pub async fn handle_signals(&self) -> EffKill<()> {
+    pub async fn handle_signals(&self) -> Flow<()> {
         use Signal::*;
         while let Some(signal) = self.thread.signal_set.receive() {
             match signal {
@@ -32,6 +32,6 @@ impl Environment {
                 }
             }
         }
-        Ok(())
+        Flow::Ok(())
     }
 }

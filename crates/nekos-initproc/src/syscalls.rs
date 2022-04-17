@@ -125,3 +125,9 @@ pub fn thread_create(f: extern "C" fn(opaque: usize) -> !, opaque: usize) -> Res
         _ => Ok(()),
     }
 }
+
+pub fn thread_exit() -> ! {
+    match unsafe { ecall!(0x5a76e1f5u32, 0) } {
+        _ => panic!(),
+    }
+}

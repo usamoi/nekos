@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::sched::scheduler::spawn;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -8,10 +7,9 @@ use crossbeam::atomic::AtomicCell;
 use proc::process::Process;
 use proc::signal_set::SignalSet;
 use proc::vmm::AreaFindMapError;
-use rt::paging::Paging;
-use rt::thread::current;
+use rt::time::local;
 use rt::time::Instant;
-use rt::trap::User;
+use sched::scheduler::spawn;
 use spin::{Mutex, Once};
 use user::objects::memory::Memory;
 use user::objects::memory::MemoryCreateError;
@@ -28,7 +26,7 @@ partially!(AreaFindMapError, ThreadCreateError; OutOfVirtualMemory);
 pub struct Thread {
     pub status: AtomicCell<ThreadStatus>,
     pub signal_set: SignalSet,
-    pub switch: Mutex<User>,
+    pub trapping: Mutex<<P as Platform>::Trapping>,
     // warning: this mutex MUST unlock quickly after lock
     pub process: Arc<Process>,
     future: Once<Mutex<Pin<Box<dyn Future<Output = ()> + Send>>>>,
@@ -43,7 +41,6 @@ impl Thread {
         pc: VAddr,
         opaque: usize,
     ) -> Result<Arc<Thread>, ThreadCreateError> {
-        let pt = process.space.page_table.token();
         let sp = {
             let memory = Memory::create(config::THREAD_STACK_LAYOUT).out::<ThreadCreateError>()?;
             let size = memory.layout().size();
@@ -53,7 +50,7 @@ impl Thread {
                 .find_map(memory, Permission::RW)
                 .out::<ThreadCreateError>()?;
             let stack_top = stack_bot + size;
-            stack_top - P::STACK_OFFSET
+            stack_top - P::ABI_STACK_OFFSET
         };
         let tp = match &process.load_tls {
             None => VAddr::new(0),
@@ -67,16 +64,17 @@ impl Thread {
                     .out::<ThreadCreateError>()?
             }
         };
-        let switch = {
-            let mut switch = User::new(pt, pc, sp, tp);
-            switch.set_opaque(opaque);
-            switch
-        };
         let thread = Arc::new(Thread {
             status: AtomicCell::new(ThreadStatus::Live),
             signal_set: SignalSet::new(),
             future: Once::new(),
-            switch: Mutex::new(switch),
+            trapping: Mutex::new(<P as Platform>::Trapping::new(
+                Privilege::User,
+                pc,
+                sp,
+                tp,
+                opaque,
+            )),
             process: process.clone(),
         });
         thread
@@ -89,17 +87,14 @@ impl Thread {
 
 impl PreemptiveFuture for Thread {
     fn poll(&self, cx: &mut Context, duration: Duration) -> Poll<()> {
-        let mut guard = self.future.get().unwrap().lock();
-        current().set_timer(Instant::now() + duration);
-        let future = guard.as_mut();
-        let ans = future.poll(cx);
-        drop(guard);
-        ans
+        let mut future = self.future.get().unwrap().lock();
+        local().timer((Instant::now() + duration).value());
+        future.as_mut().poll(cx)
     }
 }
 
 impl Environment {
-    pub async fn thread_fault(&self) -> EffKill<!> {
+    pub async fn thread_fault(&self) -> Flow<!> {
         self.thread
             .status
             .store(ThreadStatus::Dead(ThreadDeath::Fault(
@@ -109,9 +104,9 @@ impl Environment {
             .process
             .thread_set
             .on_thread_killed(&self.thread);
-        Err(EffectKill::Kill)
+        Flow::Eff(Effect)
     }
-    pub async fn thread_exit(&self, exit_code: isize) -> EffKill<!> {
+    pub async fn thread_exit(&self, exit_code: isize) -> Flow<!> {
         self.thread
             .status
             .store(ThreadStatus::Dead(ThreadDeath::Exited(exit_code)));
@@ -119,57 +114,65 @@ impl Environment {
             .process
             .thread_set
             .on_thread_killed(&self.thread);
-        Err(EffectKill::Kill)
+        Flow::Eff(Effect)
     }
-    pub async fn forever(&self) -> EffKill<!> {
-        use self::Exception::*;
-        use self::Interrupt::*;
-        use self::Trap::*;
+    pub async fn forever(&self) -> Flow<!> {
+        use Exception::*;
+        use Interrupt::*;
+        use Trap::*;
         loop {
             self.handle_signals().await?;
-            let trap = unsafe { self.thread.switch.lock().switch() };
+            let trap = unsafe {
+                P::trap_switch(
+                    &mut self.thread.trapping.lock(),
+                    self.process.space.page_table.as_ref(),
+                )
+            };
             match trap {
-                Unknown => {
+                TrapUnknown => {
                     panic!("unknown");
                 }
-                Exception(IllegalInstruction) => {
+                TrapException(IllegalInstruction) => {
                     self.process_fault(ProcessFault::IllegalInstruction).await?;
                 }
-                Exception(Misaligned { access, .. }) => {
+                TrapException(Misaligned { access, .. }) => {
                     self.process_fault(ProcessFault::Misaligned { access })
                         .await?;
                 }
-                Exception(PageFault { access, addr }) => {
+                TrapException(PageFault { access, addr }) => {
                     self.handle_page_fault(addr, access).await?;
                 }
-                Exception(Breakpoint) => {
-                    trace!("breakpoint");
-                    self.thread.switch.lock().solve_breakpoint();
+                TrapException(Breakpoint) => {
+                    self.thread.trapping.lock().solve_breakpoint();
                 }
-                Exception(Syscall { id, args }) => {
-                    let ret = match self.handle_syscall(id, args).await {
-                        Ok(value) => Ok(value),
-                        Err(EffectSys::Errno(errno)) => Err(errno),
-                        Err(EffectSys::EffectKill(fault)) => return Err(fault),
-                    };
-                    self.thread.switch.lock().solve_syscall(ret);
+                TrapException(Syscall { id, args }) => {
+                    let mut trapping = self.thread.trapping.lock();
+                    match self.handle_syscall(id, args).await.shift()? {
+                        Ok(value) => {
+                            trapping.solve_syscall(Some(0), Some(value));
+                        }
+                        Err(errno) => {
+                            trapping.solve_syscall(Some(u32::from(errno) as usize), None);
+                        }
+                    }
                 }
-                Interrupt(Timer) => {
+                TrapInterrupt(Timer) => {
                     base::future::yield_now().await;
                 }
-                Interrupt(Software { .. }) => {
+                TrapInterrupt(Software { .. }) => {
                     self.handle_signals().await?;
                 }
-                Interrupt(Hardware { value }) => {
+                TrapInterrupt(Hardware { value }) => {
                     panic!("hardware interrupt: not supported (value = {})", value);
                 }
             }
         }
     }
-    pub async fn start(&self) -> EffectKill {
+    pub async fn start(&self) -> Effect {
         match self.forever().await {
-            Ok(_infallible) => _infallible,
-            Err(death) => death,
+            Flow::Ok(_infallible) => _infallible,
+            Flow::Err(_infallible) => _infallible,
+            Flow::Eff(eff) => eff,
         }
     }
 }
